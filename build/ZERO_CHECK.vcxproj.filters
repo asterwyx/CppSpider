@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="16.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <CustomBuild Include="C:\Users\asterwyx\CLionProjects\CPPSpider\build\CMakeFiles\ee2244d7ff7cd4a7e574dc7b84cbdc22\generate.stamp.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="CMake Rules">
+      <UniqueIdentifier>{8F93C517-7805-35F3-9636-64ACE6F7F30C}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>
