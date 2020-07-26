@@ -6,8 +6,8 @@
 #include <string.h>
 #include "cJSON.h"
 #include "Regex.h"
-#define BIG_BUF_SIZE	(1024*1024)
-#define FILTER_NUM		5
+#define BIG_BUF_SIZE    (1024*1024)
+#define FILTER_NUM      5
 
 bool CheckFiltered(char pFilter[][MAX_NAME_LEN], int FilterNum, char* str);
 void PrintcJSON(cJSON* item, bool IsFormatted);

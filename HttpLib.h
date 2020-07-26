@@ -45,7 +45,6 @@ typedef struct response {
     cJSON* ExtraHeaders = cJSON_CreateArray();
     int HeaderNum = 0;
     char body[BUF_SIZE + 1];
-    // 控制信息
     bool parsed = false;
     bool chunked = false;
     char BodyFileName[MAX_NAME_LEN];
@@ -70,7 +69,6 @@ typedef struct request {
  * 现在我们需要抽象出session这个概念来控制整个过程的爬取
  */
 typedef struct Session {
-    SOCKET SocketConn;
     PADDRINFOA AddrInfo;
     PREQUEST request;
     PRESPONSE response;

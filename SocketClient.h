@@ -19,7 +19,7 @@ namespace rc {
 
 typedef struct Task {
     SOCKET socket;
-    ADDRINFO sAddrInfo;
+    PADDRINFOA pAddrInfo;
     PVOID pArgs;
     bool bArgsAttached;
     RecvCallback fRecvHandler;

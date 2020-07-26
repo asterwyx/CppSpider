@@ -1,9 +1,15 @@
 #pragma once
 #include "HttpLib.h"
+#include "SocketClient.h"
+#include <iostream>
 #pragma comment(lib, "ws2_32.lib")
 #define	CHECK_TRUNC(r1, r2) (r1 == '\r' && r2 == '\r' ? true : false)
 HANDLE empty;
 HANDLE full;
+
+using std::cerr;
+using std::cout;
+using std::endl;
 
 /**
  * 处理爬下来的分段的数据
@@ -53,7 +59,6 @@ DWORD WINAPI LinkChunked(LPVOID lpArgs)
     // 关闭文件
     fclose(raw);
     remove(source);
-    // TODO 去掉结尾的几个0d0d0a
     fclose(out);
     rename(tmp, source);
     return 0;
@@ -116,6 +121,17 @@ int SendRequest(SOCKET SocketConn, char* RequestString)
     }
     printf("Sent %d bytes.\n", SentLen);
     return 0;
+}
+
+void RecvCallback(SOCKET socket, LPVOID pSession)
+{
+    PSESSION session = (PSESSION)pSession;
+    int status = RecvResponse(socket, session->response);
+    if (status != 0) {
+        cerr << "Receive response failed." << endl;
+    }
+    GetCookies(session);
+    closesocket(socket);
 }
 
 /**
@@ -195,19 +211,13 @@ void Dispose()
 
 int HttpRequest(PSESSION session)
 {
-    session->SocketConn = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP); // 创建socket
-    if (connect(session->SocketConn, session->AddrInfo->ai_addr, sizeof(*session->AddrInfo->ai_addr)) != 0)
-    {
-        fprintf(stderr, "Connect server failed!\n");
-    }
+    PTASK pTask = CreateTask(session, BUF_SIZE);
+    pTask->pAddrInfo = session->AddrInfo;
+    pTask->fRecvHandler = RecvCallback;
     char* ReqStr = PrintRequest(session->request);
-    printf("%s\n", ReqStr);
-    int status = SendRequest(session->SocketConn, ReqStr);
-    status = RecvResponse(session->SocketConn, session->response);
-    GetCookies(session);
-    closesocket(session->SocketConn);
+    strcpy_s(pTask->aSendBuf, BUF_SIZE, ReqStr);
     free(ReqStr);
-    return 0;
+    return AddTask(pTask);
 }
 
 int NextRequest(PSESSION session, const char *NewPath, METHOD NewMethod, const char* NewBody, const char* NewBodyFileName)

@@ -43,9 +43,10 @@ DWORD WINAPI scheduler(LPVOID lpParam)
         else
         {
             int nSktIdx = index - WSA_WAIT_EVENT_0;
+            SOCKET socket = aTasks[nSktIdx]->socket;
             WSANETWORKEVENTS event;
             /* get actual network events and reset the WSAEvent */
-            int ret = WSAEnumNetworkEvents(aTasks[nSktIdx]->socket, aEvents[nSktIdx], &event);
+            int ret = WSAEnumNetworkEvents(socket, aEvents[nSktIdx], &event);
             if (ret == SOCKET_ERROR)
             {
                 // error
@@ -59,14 +60,15 @@ DWORD WINAPI scheduler(LPVOID lpParam)
             {
                 if (event.iErrorCode[FD_READ_BIT] == 0)
                 {
-                    aTasks[nSktIdx]->fRecvHandler(aTasks[nSktIdx]->socket, nullptr);
+                    aTasks[nSktIdx]->fRecvHandler(socket, nullptr);
                 }
             }
             else if (event.lNetworkEvents & FD_CLOSE)
             {
                 if (event.iErrorCode[FD_CLOSE_BIT] == 0)
                 {
-                    closesocket(aTasks[nSktIdx]->socket);
+                    closesocket(socket);
+                    cout << "Socket " << socket << " closed." << endl;
                     DestroyTask(&aTasks[nSktIdx]);
                     for (int i = nSktIdx; i < nTask; i++)
                     {
@@ -80,10 +82,22 @@ DWORD WINAPI scheduler(LPVOID lpParam)
             {
                 if (event.iErrorCode[FD_WRITE_BIT] == 0)
                 {
-                    if (send(aTasks[nSktIdx]->socket, aTasks[nSktIdx]->aSendBuf, strlen(aTasks[nSktIdx]->aSendBuf), 0) == SOCKET_ERROR)
+                    char *pToSent = aTasks[nSktIdx]->aSendBuf;
+                    int nReqLen = strlen(pToSent);
+                    int nSentLen = 0;
+                    while (nSentLen < nReqLen)
                     {
-                        cerr << "Send error!" << endl;
+                        int len = send(socket, pToSent + nSentLen, nReqLen - nSentLen, 0);
+                        if (len >= 0)
+                        {
+                            nSentLen += len;
+                        }
+                        else
+                        {
+                            break;
+                        }
                     }
+                    cout << "Sent " << nSentLen << " bytes." << endl;
                 }
             }
             
@@ -105,7 +119,7 @@ int AddTask(PTASK pTask)
     if (aEvents[nTask] == nullptr) {
         aEvents[nTask] = WSACreateEvent();
     }
-    int rc = WSAConnect(pTask->socket, pTask->sAddrInfo.ai_addr, sizeof(pTask->sAddrInfo.ai_addr), nullptr, nullptr, nullptr, nullptr);
+    int rc = WSAConnect(pTask->socket, pTask->pAddrInfo->ai_addr, sizeof(*pTask->pAddrInfo->ai_addr), nullptr, nullptr, nullptr, nullptr);
     if (rc == 0) {
         cout << "Connect server successfully." << endl;
     } else {
@@ -142,8 +156,9 @@ void StartScheduler()
 PTASK CreateTask(PVOID pArgs, size_t nBufSize)
 {
     auto result = (PTASK)malloc(sizeof(TASK) + nBufSize);
-    result->socket = WSASocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, nullptr, 0, NULL);
+    result->socket = WSASocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, nullptr, 0, 0);
     result->pArgs = pArgs;
+    result->pAddrInfo = nullptr;
     result->bArgsAttached = false;
     result->bStarted = false;
     result->bFinished = false;
