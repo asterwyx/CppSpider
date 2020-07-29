@@ -4,6 +4,7 @@
 #include <cerrno>
 #include <cstring>
 #include <iostream>
+#include "log.h"
 using std::cout;
 using std::endl;
 using std::cerr;
@@ -26,10 +27,10 @@ DWORD WINAPI scheduler(LPVOID lpParam)
             switch (error)
             {
             case WSANOTINITIALISED:
-                cerr << "Haven't init or init failed!" << endl;
+                CSR_ERROR("Haven't init or init failed!\n");
                 break;
             case WSAENETDOWN:
-                cerr << "Network subsystem error!" << endl;
+                CSR_ERROR("Network subsystem error!\n");
                 break;
             default:
                 break;
@@ -50,6 +51,7 @@ DWORD WINAPI scheduler(LPVOID lpParam)
             if (ret == SOCKET_ERROR)
             {
                 // error
+                // CSR_ERROR("Socket error!\n");
                 continue;
             }
             if (event.lNetworkEvents & FD_ACCEPT)
@@ -60,6 +62,7 @@ DWORD WINAPI scheduler(LPVOID lpParam)
             {
                 if (event.iErrorCode[FD_READ_BIT] == 0)
                 {
+                    CSR_DEBUG("Socket %llu receive some bytes.\n", socket);
                     aTasks[nSktIdx]->fRecvHandler(socket, aTasks[nSktIdx]->pArgs);
                 }
             }
@@ -68,7 +71,7 @@ DWORD WINAPI scheduler(LPVOID lpParam)
                 if (event.iErrorCode[FD_CLOSE_BIT] == 0)
                 {
                     closesocket(socket);
-                    cout << "Socket " << socket << " closed." << endl;
+                    CSR_DEBUG("Socket %llu closed.\n", socket);
                     DestroyTask(&aTasks[nSktIdx]);
                     for (int i = nSktIdx; i < nTask; i++)
                     {
@@ -97,7 +100,7 @@ DWORD WINAPI scheduler(LPVOID lpParam)
                             break;
                         }
                     }
-                    cout << "Sent " << nSentLen << " bytes." << endl;
+                    CSR_DEBUG("Socket %llu send %d bytes.\n", socket, nSentLen);
                 }
             }
             
@@ -111,7 +114,7 @@ int AddTask(PTASK pTask)
     /* check full */
     if (nTask >= MAX_TASK_NUM)
     {
-        cerr << "Task queue is full." << endl;
+        CSR_ERROR("Task queue is full!\n");
         return rc::E_NOMEM;
     }
     aTasks[nTask] = pTask;
@@ -121,9 +124,9 @@ int AddTask(PTASK pTask)
     }
     int rc = WSAConnect(pTask->socket, pTask->pAddrInfo->ai_addr, sizeof(*pTask->pAddrInfo->ai_addr), nullptr, nullptr, nullptr, nullptr);
     if (rc == 0) {
-        cout << "Connect server successfully." << endl;
+        CSR_DEBUG("Socket %llu connect successfully.\n", pTask->socket);
     } else {
-        cerr << "Cannot connect to server." << endl;
+        CSR_ERROR("Socket %llu connection failed!\n", pTask->socket);
         return rc::E_CONN_FAIL;
     }
     WSAEventSelect(pTask->socket, aEvents[nTask], FD_READ | FD_WRITE | FD_CLOSE);
@@ -140,7 +143,7 @@ void InitScheduler()
     WORD SockVersion = MAKEWORD(2, 2);
     if (WSAStartup(SockVersion, &WsaData) != 0)
     {
-        cerr << "Cannot start WinSock2!" << endl;
+        CSR_ERROR("Cannot start WinSock2!\n");
         exit(EXIT_FAILURE);
     }
     /* initialize events array */

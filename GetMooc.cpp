@@ -1,5 +1,6 @@
 #pragma once
 #include "HttpLib.h"
+#include "log.h"
 #include <cstdio>
 #include <stdio.h>
 #include <regex>
@@ -8,6 +9,7 @@
 #include "Regex.h"
 #define BIG_BUF_SIZE    (1024*1024)
 #define FILTER_NUM      5
+extern HANDLE g_hEventScheduler;
 
 bool CheckFiltered(char pFilter[][MAX_NAME_LEN], int FilterNum, char* str);
 void PrintcJSON(cJSON* item, bool IsFormatted);
@@ -18,6 +20,7 @@ int main()
     {
         fprintf(stderr, "WSAStartup failed!\n");
     }
+    csr_log::init();
     // 测试一下得到的主机ip是否正确
     PSESSION session = CreateSession("www.icourse163.org");
     strcpy_s(session->request->path, MAX_NAME_LEN, "/university/PKU");
@@ -42,6 +45,7 @@ int main()
         NextRequest(session, "/web/j/courseBean.getCourseListBySchoolId.rpc", METHOD::POST, NewBody, NewFileName);
         HttpRequest(session);
     }
+    WaitForSingleObject(g_hEventScheduler, INFINITE);
     Dispose();
     // 开始处理得到的数据
     char FileName[MAX_NAME_LEN];
@@ -101,9 +105,6 @@ int main()
     fputs(String, fp);
     free(String);
     fclose(fp);
-
-
-
     DestroySession(&session);
     return 0;
 }

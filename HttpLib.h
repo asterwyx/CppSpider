@@ -11,7 +11,7 @@
 #include "cJSON.h"
 #define MAX_HEADER_LEN      1024
 #define MAX_HEADER_NUM      50
-#define DATA_ROOT           "../../DataRoot/"
+#define DATA_ROOT           "C:/repos/cpp/CppSpider/DataRoot/"
 #define MAX_NAME_LEN        1024
 #define GET_ADDR_FAILED     -1
 #define BUF_SIZE            4096

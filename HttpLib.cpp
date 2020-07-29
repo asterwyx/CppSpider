@@ -2,6 +2,8 @@
 #include "HttpLib.h"
 #include "SocketClient.h"
 #include <iostream>
+#include <string>
+#include "log.h"
 #pragma comment(lib, "ws2_32.lib")
 #define CHECK_TRUNC(r1, r2) (r1 == '\r' && r2 == '\r' ? true : false)
 HANDLE empty;
@@ -10,6 +12,7 @@ HANDLE full;
 using std::cerr;
 using std::cout;
 using std::endl;
+using std::string;
 
 /**
  * 处理爬下来的分段的数据
@@ -64,9 +67,12 @@ DWORD WINAPI LinkChunked(LPVOID lpArgs)
     return 0;
 }
 
-DWORD WINAPI WriteToFile(LPVOID lpResponse)
+DWORD
+WINAPI
+WriteToFile(LPVOID lpResponse)
 {
     PRESPONSE response = (PRESPONSE)lpResponse;
+    string name(DATA_ROOT);
     char FileName[MAX_NAME_LEN];
     int WrittenLen = sprintf_s(FileName, MAX_NAME_LEN, DATA_ROOT);
     sprintf_s(FileName + WrittenLen, MAX_NAME_LEN - WrittenLen, response->BodyFileName);
@@ -84,7 +90,6 @@ DWORD WINAPI WriteToFile(LPVOID lpResponse)
         else
         {
             fputs(response->body , fp);
-            printf("%s", response->body);
         }
         ReleaseSemaphore(empty, 1, NULL);
     }
@@ -119,7 +124,7 @@ int SendRequest(SOCKET SocketConn, char* RequestString)
             break;
         }
     }
-    printf("Sent %d bytes.\n", SentLen);
+    CSR_INFO("Sent %d bytes.\n", SentLen);
     return 0;
 }
 
@@ -165,8 +170,7 @@ int RecvResponse(SOCKET SocketConn, PRESPONSE pResponseGot)
                 pResponseGot->parsed = true;
                 ParseResponse(pResponseGot, RecvBuf, &iParsedLen);
                 // 打印响应头部
-                printf("Status code: %d\n", pResponseGot->iStatusCode);
-                printf("Description: %s\n", pResponseGot->description);
+                CSR_DEBUG("Status code: %d, Description: %s\n", pResponseGot->iStatusCode, pResponseGot->description);
                 thread = CreateThread(NULL, 0, WriteToFile, pResponseGot, 0, NULL);
                 WaitForSingleObject(empty, INFINITE);
                 strncpy_s(pResponseGot->body, BUF_SIZE, RecvBuf + iParsedLen, len - iParsedLen);
@@ -177,7 +181,7 @@ int RecvResponse(SOCKET SocketConn, PRESPONSE pResponseGot)
     }
     if (RecvLen == 0)
     {
-        fprintf(stderr, "Receive failed.\n");
+        CSR_ERROR("Receive failed.\n");
         return -1;
     }
     WaitForSingleObject(thread, INFINITE);
@@ -190,7 +194,7 @@ void RecvHandler(SOCKET socket, LPVOID pSession)
     PSESSION session = (PSESSION)pSession;
     int status = RecvResponse(socket, session->response);
     if (status != 0) {
-        cerr << "Receive response failed." << endl;
+        CSR_ERROR("Receive response failed.\n");
     }
     GetCookies(session);
     closesocket(socket);
@@ -240,8 +244,8 @@ int NextRequest(PSESSION session, const char *NewPath, METHOD NewMethod, const c
     }
     if (!KeyCookie)
     {
-        fprintf(stderr, "Can't find the cookie.\n");
-        return NULL;
+        CSR_ERROR("Can't find the cookie.\n");
+        return -1;
     }
     char* CsrfKey = cJSON_GetObjectItem(KeyCookie, "Value")->valuestring;
     if (session->request->ReqMethod == METHOD::POST)
@@ -287,19 +291,19 @@ PSESSION CreateSession(const char* HostName)
     PSESSION result = (PSESSION)malloc(sizeof(SESSION));
     if (result == NULL)
     {
-        fprintf(stderr, "Out of memory!\n");
+        CSR_ERROR("Out of memory!\n");
         exit(EXIT_FAILURE);
     }
     result->request = (PREQUEST)malloc(sizeof(REQUEST));
     if (result->request == NULL)
     {
-        fprintf(stderr, "Out of memory!\n");
+        CSR_ERROR("Out of memory!\n");
         exit(EXIT_FAILURE);
     }
     result->response = (PRESPONSE)malloc(sizeof(RESPONSE));
     if (result->response == NULL)
     {
-        fprintf(stderr, "Out of memory!\n");
+        CSR_ERROR("Out of memory!\n");
         exit(EXIT_FAILURE);
     }
     strcpy_s(result->request->HostName, MAX_NAME_LEN, HostName);
@@ -314,32 +318,32 @@ PSESSION CreateSession(const char* HostName)
     int ret = getaddrinfo(HostName, "http", &hints, &result->AddrInfo);  // 第二个参数为http时，返回的地址中会自动为我们设置好端口号80，也可以直接传入"80"
     if (ret != 0)
     {
-        fprintf(stderr, "Get address info failed.\n");
+        CSR_ERROR("Get address info failed.\n");
         switch (ret)
         {
         case WSATRY_AGAIN:
-            fprintf(stderr, "A temporary failure in name resolution occurred.\n");
+            CSR_ERROR("A temporary failure in name resolution occurred.\n");
             break;
         case WSAEINVAL:
-            fprintf(stderr, "An invalid value was provided for the ai_flags member of the pHints parameter.\n");
+            CSR_ERROR("An invalid value was provided for the ai_flags member of the pHints parameter.\n");
             break;
         case WSANO_RECOVERY:
-            fprintf(stderr, "A nonrecoverable failure in name resolution occurred.\n");
+            CSR_ERROR("A nonrecoverable failure in name resolution occurred.\n");
             break;
         case WSAEAFNOSUPPORT:
-            fprintf(stderr, "The ai_family member of the pHints parameter is not supported.\n");
+            CSR_ERROR("The ai_family member of the pHints parameter is not supported.\n");
             break;
         case WSA_NOT_ENOUGH_MEMORY:
-            fprintf(stderr, "A memory allocation failure occurred.\n");
+            CSR_ERROR("A memory allocation failure occurred.\n");
             break;
         case WSAHOST_NOT_FOUND:
-            fprintf(stderr, "The name does not resolve for the supplied parameters or the pNodeName and pServiceName parameters were not provided.\n");
+            CSR_ERROR("The name does not resolve for the supplied parameters or the pNodeName and pServiceName parameters were not provided.\n");
             break;
         case WSATYPE_NOT_FOUND:
-            fprintf(stderr, "The pServiceName parameter is not supported for the specified ai_socktype member of the pHints parameter.\n");
+            CSR_ERROR("The pServiceName parameter is not supported for the specified ai_socktype member of the pHints parameter.\n");
             break;
         case WSAESOCKTNOSUPPORT:
-            fprintf(stderr, "The ai_socktype member of the pHints parameter is not supported.\n");
+            CSR_ERROR("The ai_socktype member of the pHints parameter is not supported.\n");
             break;
         default:
             break;
@@ -570,7 +574,7 @@ int NormalizeKeyStr(char* RawStr, char* NormalizedStr, int iBufSize)
     if (iBufSize <= length)
     {
         // 缓冲区过小
-        fprintf(stderr, "NormalizeKeyStr: Buffer is too small!\n");
+        CSR_ERROR("NormalizeKeyStr: Buffer is too small!\n");
         return -1;
     }
     for (int i = 0; i < length; i++)
