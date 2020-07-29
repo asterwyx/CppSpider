@@ -12,7 +12,7 @@ using std::cerr;
 static PTASK aTasks[MAX_TASK_NUM];
 static WSAEVENT aEvents[MAX_TASK_NUM];
 static int nTask = 0;
-extern HANDLE g_hEventScheduler;
+HANDLE g_hEventScheduler;
 
 DWORD WINAPI scheduler(LPVOID lpParam)
 {
@@ -60,7 +60,7 @@ DWORD WINAPI scheduler(LPVOID lpParam)
             {
                 if (event.iErrorCode[FD_READ_BIT] == 0)
                 {
-                    aTasks[nSktIdx]->fRecvHandler(socket, nullptr);
+                    aTasks[nSktIdx]->fRecvHandler(socket, aTasks[nSktIdx]->pArgs);
                 }
             }
             else if (event.lNetworkEvents & FD_CLOSE)

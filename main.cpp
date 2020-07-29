@@ -6,10 +6,9 @@ using std::cout;
 using std::endl;
 using std::string;
 
-int main()
+int main(int argc, char *argv[])
 {
-    InitScheduler();
-    StartScheduler();
+    cout << argv[0] << endl;
     cout << "Hello, World!" << endl;
     return 0;
 }

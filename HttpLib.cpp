@@ -3,7 +3,7 @@
 #include "SocketClient.h"
 #include <iostream>
 #pragma comment(lib, "ws2_32.lib")
-#define	CHECK_TRUNC(r1, r2) (r1 == '\r' && r2 == '\r' ? true : false)
+#define CHECK_TRUNC(r1, r2) (r1 == '\r' && r2 == '\r' ? true : false)
 HANDLE empty;
 HANDLE full;
 
@@ -123,25 +123,14 @@ int SendRequest(SOCKET SocketConn, char* RequestString)
     return 0;
 }
 
-void RecvCallback(SOCKET socket, LPVOID pSession)
-{
-    PSESSION session = (PSESSION)pSession;
-    int status = RecvResponse(socket, session->response);
-    if (status != 0) {
-        cerr << "Receive response failed." << endl;
-    }
-    GetCookies(session);
-    closesocket(socket);
-}
-
 /**
  * 用于接收报文的工具函数
  */
 int RecvResponse(SOCKET SocketConn, PRESPONSE pResponseGot)
 {
     HANDLE thread = NULL;
-    empty = CreateSemaphore(NULL, 1, 1, L"empty");
-    full = CreateSemaphore(NULL, 0, 1, L"full");
+    empty = CreateSemaphore(NULL, 1, 1, "empty");
+    full = CreateSemaphore(NULL, 0, 1, "full");
     char RecvBuf[BUF_SIZE];
     int RecvLen = 0;
     int iParsedLen;
@@ -196,11 +185,21 @@ int RecvResponse(SOCKET SocketConn, PRESPONSE pResponseGot)
     return 0;
 }
 
+void RecvHandler(SOCKET socket, LPVOID pSession)
+{
+    PSESSION session = (PSESSION)pSession;
+    int status = RecvResponse(socket, session->response);
+    if (status != 0) {
+        cerr << "Receive response failed." << endl;
+    }
+    GetCookies(session);
+    closesocket(socket);
+}
 int InitWSA()
 {
-    WSADATA WsaData;
-    WORD SockVersion = MAKEWORD(2, 2);
-    return WSAStartup(SockVersion, &WsaData);
+    InitScheduler();
+    StartScheduler();
+    return 0;
 }
 
 void Dispose()
@@ -213,7 +212,7 @@ int HttpRequest(PSESSION session)
 {
     PTASK pTask = CreateTask(session, BUF_SIZE);
     pTask->pAddrInfo = session->AddrInfo;
-    pTask->fRecvHandler = RecvCallback;
+    pTask->fRecvHandler = RecvHandler;
     char* ReqStr = PrintRequest(session->request);
     strcpy_s(pTask->aSendBuf, BUF_SIZE, ReqStr);
     free(ReqStr);

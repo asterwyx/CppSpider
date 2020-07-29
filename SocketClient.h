@@ -9,7 +9,7 @@
 #define MAX_TASK_NUM                64
 #define CreateTaskT(type, size)     (PTASK result = CreateTask(malloc(sizeof(type)), (size)), result->bArgsAttached = true, result)
 
-typedef void (*RecvCallback)(SOCKET socket, PVOID pParam);
+typedef void (*RecvCallback)(SOCKET, PVOID);
 
 namespace rc {
     const int SUCCESS = 0;
@@ -27,6 +27,8 @@ typedef struct Task {
     bool bFinished;
     char aSendBuf[0];
 } TASK, *PTASK;
+
+extern HANDLE g_hEventScheduler;
 
 int AddTask(PTASK pTask);
 void InitScheduler();
