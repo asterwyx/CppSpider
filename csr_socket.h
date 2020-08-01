@@ -1,21 +1,15 @@
 #pragma once
-#ifndef _SOCKET_CLIENT_H_
-#define _SOCKET_CLIENT_H_
 
 #include <WinSock2.h>
 #include <WS2tcpip.h>
 #include <Windows.h>
+#include "csr_def.h"
 
 #define MAX_TASK_NUM                64
-#define CreateTaskT(type, size)     (PTASK result = CreateTask(malloc(sizeof(type)), (size)), result->bArgsAttached = true, result)
 
 typedef void (*RecvCallback)(SOCKET, PVOID);
 
-namespace rc {
-    const int SUCCESS = 0;
-    const int E_NOMEM = -1;
-    const int E_CONN_FAIL = -2;
-}
+
 
 typedef struct Task {
     SOCKET socket;
@@ -35,6 +29,3 @@ void InitScheduler();
 void StartScheduler();
 PTASK CreateTask(PVOID pArgs, size_t nBufSize);
 void DestroyTask(PTASK* pPTask);
-
-
-#endif // !_SOCKET_CLIENT_H_

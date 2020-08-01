@@ -1,8 +1,9 @@
-#include "log.h"
 #include <Windows.h>
 #include <cstdio>
 #include <cstdarg>
 #include <iostream>
+
+#include "csr_log.h"
 
 namespace csr_log {
 

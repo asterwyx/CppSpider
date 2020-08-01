@@ -1,7 +1,9 @@
 #include <iostream>
 #include <Windows.h>
 #include <cstdlib>
-#include "log.h"
+
+#include "csr_log.h"
+
 using std::cerr;
 using std::cout;
 using std::endl;

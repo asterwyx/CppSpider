@@ -1,5 +1,5 @@
 #pragma once
-#include "HttpLib.h"
+#include "csr_http.h"
 #include <stdio.h>
 
 int main()
@@ -9,7 +9,7 @@ int main()
         fprintf(stderr, "WSAStartup failed!\n");
     }
     // 测试一下得到的主机ip是否正确
-    PSESSION session = CreateSession("qiming.hust.edu.cn");
+    p_session_t session = CreateSession("qiming.hust.edu.cn");
     char headers[][MAX_HEADER_LEN] = {
         "Accept: *",
         "Host: qiming.hust.edu.cn",

@@ -1,10 +1,9 @@
-#pragma once
-#include "HttpLib.h"
-#include "log.h"
+#include "csr_log.h"
 #include <cstdio>
-#include <stdio.h>
 #include <regex>
-#include <string.h>
+#include <cstring>
+#include "csr_http.h"
+#include "csr_def.h"
 #include "cJSON.h"
 #include "Regex.h"
 #define BIG_BUF_SIZE    (1024*1024)
@@ -15,20 +14,19 @@ bool CheckFiltered(char pFilter[][MAX_NAME_LEN], int FilterNum, char* str);
 void PrintcJSON(cJSON* item, bool IsFormatted);
 int main()
 {
-    system("@chcp 65001 > nul");
     if (InitWSA() != 0)
     {
         fprintf(stderr, "WSAStartup failed!\n");
     }
     csr_log::init();
     // 测试一下得到的主机ip是否正确
-    PSESSION session = CreateSession("www.icourse163.org");
+    p_session_t session = CreateSession("www.icourse163.org");
     strcpy_s(session->request->path, MAX_NAME_LEN, "/university/PKU");
-    strcpy_s(session->response->BodyFileName, MAX_NAME_LEN, "PKU.html");
+    strcpy_s(session->response->body_filename, MAX_NAME_LEN, "PKU.html");
     char headers[][MAX_HEADER_LEN] = {
         "Accept: *",
         "Host: www.icourse163.org",
-        "Connection: keep-alive",
+        "Connection: close",
         "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.138 Safari/537.36"
     };
     for (int i = 0; i < 4; i++)
@@ -42,7 +40,7 @@ int main()
         sprintf_s(NewBody, "schoolId=13001&p=%d&psize=20&type=1&courseStatus=30", i + 1);
         char NewFileName[MAX_NAME_LEN];
         sprintf_s(NewFileName, "PKU%d.json", i + 1);
-        NextRequest(session, "/web/j/courseBean.getCourseListBySchoolId.rpc", METHOD::POST, NewBody, NewFileName);
+        NextRequest(session, "/web/j/courseBean.getCourseListBySchoolId.rpc", method_t::POST, NewBody, NewFileName);
         HttpRequest(session);
     }
     WaitForSingleObject(g_hEventScheduler, INFINITE);
@@ -91,7 +89,7 @@ int main()
             int id = cJSON_GetObjectItem(DataPiece, "id")->valueint;
             sprintf_s(PiecePath, MAX_NAME_LEN, "/course/PKU-%d", id);
             sprintf_s(FileName, MAX_NAME_LEN, "PKU-%d.html", id);
-            NextRequest(session, PiecePath, METHOD::GET, NULL, FileName);
+            NextRequest(session, PiecePath, method_t::GET, NULL, FileName);
             HttpRequest(session);
             cJSON_AddItemToArray(DataArray, DataPiece);
         }
@@ -120,7 +118,7 @@ bool CheckFiltered(char pFilter[][MAX_NAME_LEN], int FilterNum, char* str)
             break;
         }
     }
-    return	filtered;
+    return filtered;
 }
 
 void PrintcJSON(cJSON* item, bool IsFormatted)

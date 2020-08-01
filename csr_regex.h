@@ -1,20 +1,19 @@
-#ifndef _REGEX_H
-#define _REGEX_H
+#pragma once
 #include "cJSON.h"
-#define MAX_RANGE		5
-#define MAX_BUF_SIZE	1024*1024
+#define MAX_RANGE       5
+#define MAX_BUF_SIZE    1024*1024
 
-typedef enum class MatchMode {
+typedef enum match_mode {
     ONCE,
     ZERO_OR_MORE,
     ONE_OR_MORE,
     ONE_OR_NOT
-} MATCH_MODE;
+} match_mode_t;
 
 typedef struct SubPattern {
     const char* SubStart;
     int SubLen;
-    MATCH_MODE mode;
+    match_mode_t mode;
     struct SubPattern* next;
 } SUB_PATTERN, * PSUB_PATTERN;
 
@@ -46,5 +45,3 @@ const char* GetCourseSummary(cJSON* DataPiece, const char* start);
 const char* GetCourseTarget(cJSON* DataPiece, const char* start);
 const char* GetCourseOutline(cJSON* DataPiece, const char* start);
 const char* GetCourseReference(cJSON* DataPiece, const char* start);
-
-#endif // !_REGEX_H

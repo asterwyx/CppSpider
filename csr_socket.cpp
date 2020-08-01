@@ -1,10 +1,11 @@
-#include "SocketClient.h"
 #include <cstdlib>
 #include <cstdio>
 #include <cerrno>
 #include <cstring>
 #include <iostream>
-#include "log.h"
+
+#include "csr_log.h"
+#include "csr_socket.h"
 using std::cout;
 using std::endl;
 using std::cerr;

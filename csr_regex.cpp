@@ -1,4 +1,4 @@
-#include "Regex.h"
+#include "csr_regex.h"
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -29,7 +29,7 @@ PMATCH_RESULT RegexMatch(const char* source, const char* pattern)
         {
             switch (current->mode)
             {
-            case MATCH_MODE::ONCE:
+            case match_mode_t::ONCE:
                 // 普通匹配一次
                 if (MatchEnd != SourceEnd && !NotMatched)
                 {
@@ -51,7 +51,7 @@ PMATCH_RESULT RegexMatch(const char* source, const char* pattern)
                     MatchEnd += iMatchedLen;
                 }
                 break;
-            case MATCH_MODE::ONE_OR_MORE:
+            case match_mode_t::ONE_OR_MORE:
                 if (MatchEnd != SourceEnd && !NotMatched)
                 {
                     iMatchedLen = 0;
@@ -138,7 +138,7 @@ PMATCH_RESULT RegexMatch(const char* source, const char* pattern)
                     DestroyResult(&SubResult);
                 }
                 break;
-            case MATCH_MODE::ZERO_OR_MORE:
+            case match_mode_t::ZERO_OR_MORE:
                 if (MatchEnd != SourceEnd && !NotMatched)
                 {
                     iMatchedLen = 0;
@@ -211,7 +211,7 @@ PMATCH_RESULT RegexMatch(const char* source, const char* pattern)
                     DestroyResult(&SubResult);
                 }
                 break;
-            case MATCH_MODE::ONE_OR_NOT:
+            case match_mode_t::ONE_OR_NOT:
                 if (MatchEnd != SourceEnd && !NotMatched)
                 {
                     iMatchedLen = 0;
@@ -419,13 +419,13 @@ void ParsePattern(PPATTERN_U pattern)
             switch (current->SubStart[current->SubLen + 1])
             {
             case '*':
-                current->mode = MATCH_MODE::ZERO_OR_MORE; // 0或多次
+                current->mode = match_mode_t::ZERO_OR_MORE; // 0或多次
                 break;
             case '+':
-                current->mode = MATCH_MODE::ONE_OR_MORE; // 1或多次
+                current->mode = match_mode_t::ONE_OR_MORE; // 1或多次
                 break;
             case '?':
-                current->mode = MATCH_MODE::ONE_OR_NOT; // 0或1次
+                current->mode = match_mode_t::ONE_OR_NOT; // 0或1次
                 break;
             default:
                 break;
@@ -439,7 +439,7 @@ void ParsePattern(PPATTERN_U pattern)
             {
                 current->SubLen++;
             }
-            current->mode = MATCH_MODE::ONCE;
+            current->mode = match_mode_t::ONCE;
             NewStart = current->SubStart + current->SubLen;
         }
         // 在尾部插入
