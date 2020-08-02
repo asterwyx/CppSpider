@@ -22,14 +22,12 @@ typedef struct Pattern {
     PSUB_PATTERN SubPatterns;
 } PATTERN_U, * PPATTERN_U;
 
-// 匹配的一个位置
 typedef struct MatchPiece {
     const char* position;
     int length;
     struct MatchPiece* next;
 } MATCH_PIECE, * PMATCH_PIECE;
 
-// 匹配的全部结果
 typedef struct MatchResult {
     int iMatchedNum;
     PMATCH_PIECE pieces;

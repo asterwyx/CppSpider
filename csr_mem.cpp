@@ -1,8 +1,11 @@
 #include "csr_mem.h"
 #include <cstdlib>
-#include "csr_log.h"
 #include <list>
 #include <Windows.h>
+
+#include "csr_log.h"
+#include "csr_error.h"
+
 using csr::mempool_t;
 using csr::mbuf_t;
 using csr::p_mbuf_t;
@@ -12,10 +15,11 @@ p_mempool_t g_csr_mp;
 
 static std::list<p_mempool_t> g_mempools;
 
-int csr_init_mem()
+uint64_t csr_init_mem()
 {
     g_csr_mp = csr::create_mempool("cpp_spider", sizeof(mbuf_t) + MBUF_SIZE, MBUF_NUM);
     g_mempools.push_back(g_csr_mp);
+    return rc::SUCCESS;
 }
 
 p_mempool_t csr::create_mempool(const char *name, uint32_t n_ele_size, uint32_t n_ele_num)

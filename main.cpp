@@ -2,12 +2,12 @@
 #include <Windows.h>
 #include <cstdlib>
 
-#include "csr_log.h"
+#include "csr_main.h"
 
 using std::cerr;
 using std::cout;
 using std::endl;
-using csr_log::print;
+using csr::print;
 
 DWORD WINAPI TestThread(LPVOID lpParam)
 {
@@ -26,7 +26,7 @@ int main(int argc, char *argv[])
 {
     int id[5];
     HANDLE hThreads[5];
-    csr_log::init();
+    csr_init_log();
     for (int i = 0; i < 5; i++) {
         id[i] = i + 1;
         hThreads[i] = CreateThread(nullptr, 0, TestThread, id + i, 0, nullptr);

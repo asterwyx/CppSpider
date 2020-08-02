@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <ctype.h>
+#include <cstdint>
 #include <WinSock2.h>
 #include <WS2tcpip.h>
 #include <Windows.h>
@@ -18,13 +19,6 @@
 #define BUF_SIZE            4096
 #define MAX_CHUNK_SIZE      10
 #define MAX_HANDLE_NUM      20
-extern HANDLE empty;
-extern HANDLE full;
-
-typedef struct thrd_args
-{
-    char *filename;
-} thrd_args_t, *p_thrd_args_t;
 
 typedef struct http_ver {
     int n_major_ver;
@@ -40,11 +34,11 @@ typedef enum method {
 typedef struct response {
     http_ver_t version;
     int n_status_code;
-    char desc[MAX_NAME_LEN];
-    char ctnt_type[MAX_NAME_LEN];
-    int n_ctnt_len;
-    cJSON *extra_hdrs = cJSON_CreateArray();
-    int n_hdr_num = 0;
+    char description[MAX_NAME_LEN];
+    char content_type[MAX_NAME_LEN];
+    int n_content_len;
+    cJSON *a_extra_headers = cJSON_CreateArray();
+    int n_header_num = 0;
     csr::p_mbuf_t p_body_buf;
     bool parsed = false;
     bool chunked = false;
@@ -52,23 +46,19 @@ typedef struct response {
 } response_t, *p_response_t;
 
 typedef struct request {
-    method_t ReqMethod = method_t::GET; // 方法，默认为GET
-    char hostname[MAX_NAME_LEN]; // 主机名
-    char ctnt_type[MAX_NAME_LEN];
+    method_t request_method = method_t::GET;
+    char hostname[MAX_NAME_LEN];
+    char content_type[MAX_NAME_LEN];
     char token[MAX_NAME_LEN];
-    char path[MAX_NAME_LEN];  // 请求路径
-    http_ver_t version = {1, 1}; // Http版本，默认使用1.1
-    int n_ctnt_len = 0; // 主体长度
+    char path[MAX_NAME_LEN];
+    http_ver_t version = {1, 1};
+    int n_content_len = 0;
     char cookies[MAX_HEADER_LEN];
-    char* extra_hdrs[MAX_HEADER_NUM];
-    int n_hdr_num = 0;
-    char* body = NULL; // 默认是GET方法，主体为空
+    char* a_extra_headers[MAX_HEADER_NUM];
+    int n_header_num = 0;
+    char* p_body = nullptr;
 } request_t, *p_request_t;
 
-
-/**
- * 现在我们需要抽象出session这个概念来控制整个过程的爬取
- */
 typedef struct session {
     PADDRINFOA addrinfo;
     p_request_t request;
@@ -77,20 +67,18 @@ typedef struct session {
     cJSON* cookie_jar = cJSON_CreateArray();
 } session_t, * p_session_t;
 
-
-int InitWSA();
-int HttpRequest(p_session_t session);
-char* print_req(p_request_t p_req);
-int parse_hdr(p_response_t pResponse, char* ResStr, int* ParsedLen);
-void Dispose();
-//void DisposeOfResponse(PRESPONSE pResponse);
-int NormalizeKeyStr(char* RawStr, char* NormalizedStr, int iBufSize);
-cJSON* ParseCookieString(char* CookieString);
-int NextRequest(p_session_t session, const char* NewPath, method_t NewMethod, const char* NewBody, const char* NewBodyFileName);
-p_session_t CreateSession(const char *HostName);
-void InitSession(p_session_t pSession);
-void DestroySession(p_session_t* session);
-void GetCookies(p_session_t session);
-int CheckCookie(cJSON* CookieJar, cJSON* cookie);
-void AddHeader(p_request_t request, const char* header);
-void recv_handler(SOCKET socket, LPVOID pSession);
+uint64_t csr_init_http();
+int http_request(p_session_t p_session);
+char* print_request(p_request_t p_request);
+int parse_header(p_response_t p_response, char* res_str, int* n_parsed);
+void dispose();
+int norm_key_str(char* raw_str, char* normalized_str, int n_buf_size);
+cJSON* parse_cookie_str(char* cookie_str);
+int next_request(p_session_t p_session, const char* new_path, method_t new_method, const char* new_body, const char* new_body_filename);
+p_session_t create_session(const char *hostname);
+void init_session(p_session_t p_session);
+void destroy_session(p_session_t* pp_session);
+void get_cookies(p_session_t p_session);
+int check_cookie(cJSON* p_cookie_jar, cJSON* p_cookie);
+void add_header(p_request_t p_request, const char* header);
+void recv_handler(SOCKET socket, void *p_session);

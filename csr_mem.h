@@ -6,7 +6,7 @@
 #define MBUF_SIZE   (1024 * 1024)
 #define MBUF_NUM    64
 
-int csr_init_mem();
+uint64_t csr_init_mem();
 
 #define LOCK(l) do\
 {\

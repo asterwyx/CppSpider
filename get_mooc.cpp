@@ -1,26 +1,23 @@
-#include "csr_log.h"
 #include <cstdio>
 #include <regex>
 #include <cstring>
-#include "csr_http.h"
-#include "csr_def.h"
+
 #include "cJSON.h"
-#include "Regex.h"
+#include "csr_main.h"
 #define BIG_BUF_SIZE    (1024*1024)
 #define FILTER_NUM      5
-extern HANDLE g_hEventScheduler;
+extern HANDLE gh_event_scheduler;
 
-bool CheckFiltered(char pFilter[][MAX_NAME_LEN], int FilterNum, char* str);
-void PrintcJSON(cJSON* item, bool IsFormatted);
+bool check_filtered(char pFilter[][MAX_NAME_LEN], int FilterNum, char* str);
+void print_cJSON(cJSON* item, bool IsFormatted);
 int main()
 {
-    if (InitWSA() != 0)
-    {
-        fprintf(stderr, "WSAStartup failed!\n");
-    }
-    csr_log::init();
-    // 测试一下得到的主机ip是否正确
-    p_session_t session = CreateSession("www.icourse163.org");
+    uint64_t ret = csr_init();
+    rc::parse_retcode(ret);
+    if (ret != rc::SUCCESS) {
+        return -1;
+    } 
+    p_session_t session = create_session("www.icourse163.org");
     strcpy_s(session->request->path, MAX_NAME_LEN, "/university/PKU");
     strcpy_s(session->response->body_filename, MAX_NAME_LEN, "PKU.html");
     char headers[][MAX_HEADER_LEN] = {
@@ -31,21 +28,20 @@ int main()
     };
     for (int i = 0; i < 4; i++)
     {
-        AddHeader(session->request, headers[i]);
+        add_header(session->request, headers[i]);
     }
-    int status = HttpRequest(session);
+    int status = http_request(session);
     for (int i = 0; i < 5; i++)
     {
         char NewBody[MAX_NAME_LEN];
         sprintf_s(NewBody, "schoolId=13001&p=%d&psize=20&type=1&courseStatus=30", i + 1);
         char NewFileName[MAX_NAME_LEN];
         sprintf_s(NewFileName, "PKU%d.json", i + 1);
-        NextRequest(session, "/web/j/courseBean.getCourseListBySchoolId.rpc", method_t::POST, NewBody, NewFileName);
-        HttpRequest(session);
+        next_request(session, "/web/j/courseBean.getCourseListBySchoolId.rpc", method_t::POST, NewBody, NewFileName);
+        http_request(session);
     }
-    WaitForSingleObject(g_hEventScheduler, INFINITE);
-    Dispose();
-    // 开始处理得到的数据
+    WaitForSingleObject(gh_event_scheduler, INFINITE);
+    dispose();
     char FileName[MAX_NAME_LEN];
     char* BigBuffer = (char*)malloc(BIG_BUF_SIZE);
     if (BigBuffer == NULL)
@@ -73,7 +69,6 @@ int main()
         sprintf_s(FileName, MAX_NAME_LEN, "%sPKU%d.json", DATA_ROOT, i + 1);
         FILE* fp = fopen(FileName, "r");
         fgets(BigBuffer, BIG_BUF_SIZE, fp);
-        // 解析这个文件
         source = cJSON_Parse(BigBuffer);
         SourceArray = cJSON_GetObjectItem(cJSON_GetObjectItem(source, "result"), "list");
         int ArraySize = cJSON_GetArraySize(SourceArray);
@@ -85,29 +80,28 @@ int main()
             {
                 cJSON_AddItemToObject(DataPiece, filter[i], cJSON_DetachItemFromObject(ArrayItem, filter[i]));
             }
-            // 开始为每一条请求数据
             int id = cJSON_GetObjectItem(DataPiece, "id")->valueint;
             sprintf_s(PiecePath, MAX_NAME_LEN, "/course/PKU-%d", id);
             sprintf_s(FileName, MAX_NAME_LEN, "PKU-%d.html", id);
-            NextRequest(session, PiecePath, method_t::GET, NULL, FileName);
-            HttpRequest(session);
+            next_request(session, PiecePath, method_t::GET, NULL, FileName);
+            http_request(session);
             cJSON_AddItemToArray(DataArray, DataPiece);
         }
         cJSON_Delete(source);
         fclose(fp);
     }
-    PrintcJSON(DataGot, true);
+    print_cJSON(DataGot, true);
     char* String = cJSON_PrintUnformatted(DataGot);
     sprintf_s(FileName, MAX_NAME_LEN, "%sdata.json", DATA_ROOT);
     FILE* fp = fopen(FileName, "w");
     fputs(String, fp);
     free(String);
     fclose(fp);
-    DestroySession(&session);
+    destroy_session(&session);
     return 0;
 }
 
-bool CheckFiltered(char pFilter[][MAX_NAME_LEN], int FilterNum, char* str)
+bool check_filtered(char pFilter[][MAX_NAME_LEN], int FilterNum, char* str)
 {
     bool filtered = false;
     for (int i = 0; i < FilterNum; i++)
@@ -121,7 +115,7 @@ bool CheckFiltered(char pFilter[][MAX_NAME_LEN], int FilterNum, char* str)
     return filtered;
 }
 
-void PrintcJSON(cJSON* item, bool IsFormatted)
+void print_cJSON(cJSON* item, bool IsFormatted)
 {
     char* PrintedString;
     if (IsFormatted)

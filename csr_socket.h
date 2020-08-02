@@ -3,29 +3,31 @@
 #include <WinSock2.h>
 #include <WS2tcpip.h>
 #include <Windows.h>
-#include "csr_def.h"
+#include <cstdint>
+
+#include "csr_error.h"
 
 #define MAX_TASK_NUM                64
 
-typedef void (*RecvCallback)(SOCKET, PVOID);
+uint64_t csr_init_socket();
+namespace csr{
+typedef void (*recv_callback_t)(SOCKET, void *);
 
+extern HANDLE gh_event_scheduler;
 
-
-typedef struct Task {
+typedef struct task {
     SOCKET socket;
-    PADDRINFOA pAddrInfo;
-    PVOID pArgs;
-    bool bArgsAttached;
-    RecvCallback fRecvHandler;
-    bool bStarted;
-    bool bFinished;
-    char aSendBuf[0];
-} TASK, *PTASK;
+    PADDRINFOA p_addrinfo;
+    void *p_args;
+    bool b_args_attached;
+    recv_callback_t f_recv_handler;
+    bool b_started;
+    bool b_finished;
+    char p_send_buf[0];
+} task_t, *p_task_t;
 
-extern HANDLE g_hEventScheduler;
-
-int AddTask(PTASK pTask);
-void InitScheduler();
-void StartScheduler();
-PTASK CreateTask(PVOID pArgs, size_t nBufSize);
-void DestroyTask(PTASK* pPTask);
+int add_task(p_task_t p_task);
+void start_scheduler();
+p_task_t create_task(void *p_args, size_t n_buf_size);
+void destroy_task(p_task_t* pPTask);
+}

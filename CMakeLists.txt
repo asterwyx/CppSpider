@@ -4,7 +4,6 @@ project(CPPSpider)
 set(CMAKE_CXX_STANDARD 14)
 set(
     MAIN_SOURCE
-    get_mooc.cpp 
     csr_socket.cpp 
     csr_socket.h
     csr_http.h
@@ -13,6 +12,10 @@ set(
     cJSON.c
     csr_log.h
     csr_log.cpp
+    csr_mem.h
+    csr_mem.cpp
+    csr_error.h
+    csr_error.cpp
 )
 
 set(
@@ -23,5 +26,7 @@ set(
 )
 
 
-add_executable(spider ${MAIN_SOURCE})
+
+add_executable(spider get_mooc.cpp ${MAIN_SOURCE})
+add_executable(downloader dlder.cpp ${MAIN_SOURCE})
 add_executable(main_test ${TEST_SOURCE})

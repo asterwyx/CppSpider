@@ -1,39 +1,39 @@
 #pragma once
+#include <cstdint>
 
 #define CSR_DEBUG(msg, ...) do\
 {\
-    csr_log::log(csr_log::LEVEL::L_DEBUG, "CSR DEBUG:", (msg), ##__VA_ARGS__);\
+    csr::log(csr::level_t::L_DEBUG, "CSR DEBUG:", (msg), ##__VA_ARGS__);\
 } while(0)
 
 #define CSR_INFO(msg, ...) do\
 {\
-    csr_log::log(csr_log::LEVEL::L_INFO, "CSR INFO:", (msg), ##__VA_ARGS__);\
+    csr::log(csr::level_t::L_INFO, "CSR INFO:", (msg), ##__VA_ARGS__);\
 } while(0)
 
 #define CSR_WARN(msg, ...) do\
 {\
-    csr_log::log(csr_log::LEVEL::L_WARN, "CSR WARN:", (msg), ##__VA_ARGS__);\
+    csr::log(csr::level_t::L_WARN, "CSR WARN:", (msg), ##__VA_ARGS__);\
 } while(0)
 
 #define CSR_ERROR(msg, ...) do\
 {\
-    csr_log::log(csr_log::LEVEL::L_ERROR, "CSR ERROR:", (msg), ##__VA_ARGS__);\
+    csr::log(csr::level_t::L_ERROR, "CSR ERROR:", (msg), ##__VA_ARGS__);\
 } while(0)
 
-namespace csr_log{
+uint64_t csr_init_log();
+namespace csr{
 
-typedef enum Level {
+typedef enum level {
     L_DEBUG,
     L_INFO,
     L_WARN,
     L_ERROR
-} LEVEL;
+} level_t;
 
-extern LEVEL g_eAppLev;
+extern level_t ge_app_lev;
 
-int init();
-
-void log(LEVEL lev, const char *prompt, const char *msg, ...);
+void log(level_t lev, const char *prompt, const char *msg, ...);
 
 void print(const char *msg, ...);
 

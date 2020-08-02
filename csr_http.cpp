@@ -1,18 +1,15 @@
-#pragma once
+#include "csr_http.h"
 #include <iostream>
 #include <string>
 
-#define WIN_NT
+#define CSR_WINDOWS
 
 #include "csr_log.h"
 #include "csr_mem.h"
-#include "csr_http.h"
 #include "csr_socket.h"
 #include "csr_thread.h"
 #pragma comment(lib, "ws2_32.lib")
-#define CHECK_TRUNC(r1, r2) (r1 == '\r' && r2 == '\r' ? true : false)
-HANDLE empty;
-HANDLE full;
+#define CHECK_TRUNC(r1, r2) ((r1 == '\r' && r2 == '\n') ? true : false)
 
 extern csr::p_mempool_t g_csr_mp;
 
@@ -21,36 +18,39 @@ using std::cout;
 using std::endl;
 using std::string;
 
-/**
- * 处理爬下来的分段的数据
- */
-int link_chunked(csr::p_mbuf_t &p_mbuf)
+uint64_t csr_init_http()
+{
+    csr::start_scheduler();
+    return rc::SUCCESS;
+}
+
+
+int link_chunked(csr::p_mbuf_t *p_mbuf)
 {
     csr::p_mbuf_t new_mbuf = csr::alloc_mbuf(g_csr_mp);
-    byte *buffer = p_mbuf->data;
+    byte *buffer = (*p_mbuf)->data;
     char r1, r2;
     uint32_t cursor = 0;
     r2 = buffer[cursor++];
     bool truncated = true;
-    while (cursor != p_mbuf->n_dlength)
+    while (cursor != (*p_mbuf)->n_dlength)
     {
         r1 = r2;
         r2 = buffer[cursor++];
         if (CHECK_TRUNC(r1, r2))
         {
             truncated = !truncated;
-            // 跳到0d0d0a序列
-            r2 = buffer[cursor++]; // 读到0a;
-            r1 = buffer[cursor++]; // 读到正常数据
-            r2 = buffer[cursor++]; // 预读到正常数据，但是不一定是要被写入的
+            r2 = buffer[cursor++];
+            r1 = buffer[cursor++];
+            r2 = buffer[cursor++];
         }
         if (!truncated)
         {
             new_mbuf->data[new_mbuf->n_dlength++] = r1;
         }
     }
-    csr::free_mbuf(p_mbuf);
-    p_mbuf = new_mbuf;
+    csr::free_mbuf(*p_mbuf);
+    *p_mbuf = new_mbuf;
     return 0;
 }
 
@@ -59,22 +59,19 @@ thrd_ret_t API write_to_file(void *lp_res)
     p_response_t res = (p_response_t)lp_res;
     if (res->chunked)
     {
-        link_chunked(res->p_body_buf);
-        res->n_ctnt_len = res->p_body_buf->n_dlength;
+        link_chunked(&res->p_body_buf);
+        res->n_content_len = res->p_body_buf->n_dlength;
     }
     string name(DATA_ROOT);
     name += res->body_filename;
     file_t *fp;
     fopen_s(&fp, name.c_str(), "w");
-    fwrite(res->p_body_buf->data, 1, res->n_ctnt_len, fp);
+    fwrite(res->p_body_buf->data, 1, res->n_content_len, fp);
     fclose(fp);
     return 0;
 }
 
-/**
- * 用于发送报文的工具函数
- */
-int SendRequest(SOCKET SocketConn, char* RequestString)
+int send_request(SOCKET SocketConn, char* RequestString)
 {
     int n_req_len = strlen(RequestString);
     int SentLen = 0;
@@ -94,96 +91,93 @@ int SendRequest(SOCKET SocketConn, char* RequestString)
     return 0;
 }
 
-/**
- * 用于接收报文的工具函数
- */
 int recv_response(SOCKET skt_conn, p_response_t p_res_got)
 {
     // Here we alloc and free a buffer
     p_res_got->p_body_buf = csr::alloc_mbuf(g_csr_mp);
-    int n_rx_len = 0, n_hdr_len = 0, len;
+    int n_hdr_len = 0, len;
     char tmp_buf[BUF_SIZE];
-    auto p_recv_buf = tmp_buf;
-    while (true)
-    {
-        len = recv(skt_conn, p_recv_buf, BUF_SIZE, 0);
-        if (len <= 0)
-        {
-            break;
-        }
-        else
-        {
-            // parse header first
-            if (!p_res_got->parsed)
-            {
-                p_res_got->parsed = true;
-                parse_hdr(p_res_got, p_recv_buf, &n_hdr_len);
-                strcpy((char *)p_res_got->p_body_buf->data, p_recv_buf + n_hdr_len);
-                p_recv_buf = (char *)p_res_got->p_body_buf->data;
+    auto p_recv_buf = (char *)p_res_got->p_body_buf->data;
+    do {
+        len = recv(skt_conn, tmp_buf, BUF_SIZE, 0);
+    } while (len < 0);
+
+    if (len != 0) {
+        p_res_got->parsed = true;
+        parse_header(p_res_got, tmp_buf, &n_hdr_len);
+        len -= n_hdr_len;
+        memcpy(p_recv_buf, tmp_buf + n_hdr_len, len);
+        do {
+            if (len == SOCKET_ERROR) {
+                auto error = WSAGetLastError();
+                if (error == WSAEWOULDBLOCK) {
+                    // Actually, here we need to rewait.
+                    // TODO
+                    continue;
+                } else {
+                    CSR_ERROR("Receive error, error code: %d\n", error);
+                }
+            } else if (len == 0) {
+                break;
+            } else {
+                p_recv_buf += len;
+                p_res_got->p_body_buf->n_dlength += len;
+                len = recv(skt_conn, p_recv_buf, p_res_got->p_body_buf->n_dsize - p_res_got->p_body_buf->n_dlength, 0);
             }
-            n_rx_len += len;
-            p_recv_buf += len;
-        }
+        } while(true);
+
     }
-    p_res_got->p_body_buf->n_dlength = n_rx_len - n_hdr_len;
-    p_res_got->n_ctnt_len = p_res_got->p_body_buf->n_dlength;
-    p_res_got->p_body_buf->data[p_res_got->n_ctnt_len] = 0;
-    if (n_rx_len == 0)
-    {
+    p_res_got->p_body_buf->data[p_res_got->p_body_buf->n_dlength] = 0;
+    if (n_hdr_len == 0) {
         CSR_ERROR("Receive failed.\n");
         return -1;
+    } else {
+        CSR_DEBUG("Socket %llu received %d bytes.", skt_conn, p_res_got->p_body_buf->n_dlength);
     }
+    CreateThread(nullptr, 0, write_to_file, p_res_got, 0, nullptr);
     return 0;
 }
 
-void recv_handler(SOCKET socket, LPVOID pSession)
+void recv_handler(SOCKET socket, void *p_session)
 {
-    p_session_t session = (p_session_t)pSession;
+    p_session_t session = (p_session_t)p_session;
     int status = recv_response(socket, session->response);
     if (status != 0) {
         CSR_ERROR("Receive response failed.\n");
     }
-    GetCookies(session);
+    get_cookies(session);
     closesocket(socket);
 }
-int InitWSA()
+
+
+void dispose()
 {
-    InitScheduler();
-    StartScheduler();
-    return 0;
 }
 
-void Dispose()
+int http_request(p_session_t p_session)
 {
-    CloseHandle(empty);
-    CloseHandle(full);
-}
-
-int HttpRequest(p_session_t session)
-{
-    PTASK pTask = CreateTask(session, BUF_SIZE);
-    pTask->pAddrInfo = session->addrinfo;
-    pTask->fRecvHandler = recv_handler;
-    char* ReqStr = print_req(session->request);
-    strcpy_s(pTask->aSendBuf, BUF_SIZE, ReqStr);
+    csr::p_task_t pTask = csr::create_task(p_session, BUF_SIZE);
+    pTask->p_addrinfo = p_session->addrinfo;
+    pTask->f_recv_handler = recv_handler;
+    char* ReqStr = print_request(p_session->request);
+    strcpy_s(pTask->p_send_buf, BUF_SIZE, ReqStr);
     free(ReqStr);
-    return AddTask(pTask);
+    return add_task(pTask);
 }
 
-int NextRequest(p_session_t session, const char *NewPath, method_t NewMethod, const char* NewBody, const char* NewBodyFileName)
+int next_request(p_session_t session, const char *NewPath, method_t NewMethod, const char* NewBody, const char* NewBodyFileName)
 {
     char buffer[BUF_SIZE];
-    session->request->ReqMethod = NewMethod;
-    session->request->n_ctnt_len = 0;
-    session->request->ctnt_type[0] = 0;
+    session->request->request_method = NewMethod;
+    session->request->n_content_len = 0;
+    session->request->content_type[0] = 0;
     session->request->token[0] = 0;
     session->request->cookies[0] = 0;
-    // 找到认证的key
     cJSON* KeyCookie = NULL;
     for (int i = 0; i < session->n_cookie_num; i++)
     {
         KeyCookie = cJSON_GetArrayItem(session->cookie_jar, i);
-        NormalizeKeyStr(cJSON_GetObjectItem(KeyCookie, "Key")->valuestring, buffer, BUF_SIZE);
+        norm_key_str(cJSON_GetObjectItem(KeyCookie, "Key")->valuestring, buffer, BUF_SIZE);
         if (strcmp(buffer, "ntesstudysi") == 0)
         {
             break;
@@ -195,10 +189,10 @@ int NextRequest(p_session_t session, const char *NewPath, method_t NewMethod, co
         return -1;
     }
     char* CsrfKey = cJSON_GetObjectItem(KeyCookie, "Value")->valuestring;
-    if (session->request->ReqMethod == method_t::POST)
+    if (session->request->request_method == method_t::POST)
     {
         sprintf_s(session->request->path, MAX_NAME_LEN, "%s?csrfKey=%s", NewPath, CsrfKey);
-        sprintf_s(session->request->ctnt_type, MAX_NAME_LEN, "Content-Type: application/x-www-form-urlencoded");
+        sprintf_s(session->request->content_type, MAX_NAME_LEN, "Content-Type: application/x-www-form-urlencoded");
         sprintf_s(session->request->token, MAX_NAME_LEN, "edu-script-token: %s", CsrfKey);
     }
     else
@@ -207,19 +201,18 @@ int NextRequest(p_session_t session, const char *NewPath, method_t NewMethod, co
     }
     if (NewBody != NULL)
     {
-        if (session->request->body == NULL)
+        if (session->request->p_body == NULL)
         {
-            session->request->body = (char*)malloc(BUF_SIZE);
+            session->request->p_body = (char*)malloc(BUF_SIZE);
         }
-        strcpy_s(session->request->body, BUF_SIZE, NewBody);
-        session->request->n_ctnt_len = strlen(session->request->body);
+        strcpy_s(session->request->p_body, BUF_SIZE, NewBody);
+        session->request->n_content_len = strlen(session->request->p_body);
     }
     strcpy_s(session->response->body_filename, MAX_NAME_LEN, NewBodyFileName);
     session->response->parsed = false;
-    cJSON_Delete(session->response->extra_hdrs);
-    session->response->extra_hdrs = cJSON_CreateArray();
-    session->response->n_hdr_num = 0;
-    // 返回Cookie
+    cJSON_Delete(session->response->a_extra_headers);
+    session->response->a_extra_headers = cJSON_CreateArray();
+    session->response->n_header_num = 0;
     cJSON* cookie;
     sprintf_s(session->request->cookies, MAX_HEADER_LEN, "Cookie: "); // 初始化键
     for (int i = 0; i < session->n_cookie_num; i++)
@@ -233,7 +226,7 @@ int NextRequest(p_session_t session, const char *NewPath, method_t NewMethod, co
     return 0;
 }
 
-p_session_t CreateSession(const char* HostName)
+p_session_t create_session(const char* hostname)
 {
     p_session_t result = (p_session_t)malloc(sizeof(session_t));
     if (result == NULL)
@@ -253,16 +246,14 @@ p_session_t CreateSession(const char* HostName)
         CSR_ERROR("Out of memory!\n");
         exit(EXIT_FAILURE);
     }
-    strcpy_s(result->request->hostname, MAX_NAME_LEN, HostName);
+    strcpy_s(result->request->hostname, MAX_NAME_LEN, hostname);
     ADDRINFO hints;
     memset(&hints, 0, sizeof(ADDRINFO));
-    // 以下代码参考msdn和https://my.oschina.net/tigerBin/blog/884788
-    // hints是希望getaddrinfo函数返回的地址链表具有哪些信息
-    hints.ai_family = AF_INET; // 希望使用地址族AF_INET
-    hints.ai_socktype = SOCK_STREAM; // 希望是流式套接字
-    hints.ai_protocol = IPPROTO_TCP; // 希望协议是TCP
-    hints.ai_flags = AI_PASSIVE; // 匹配所有IP地址
-    int ret = getaddrinfo(HostName, "http", &hints, &result->addrinfo);  // 第二个参数为http时，返回的地址中会自动为我们设置好端口号80，也可以直接传入"80"
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_protocol = IPPROTO_TCP;
+    hints.ai_flags = AI_PASSIVE;
+    int ret = getaddrinfo(hostname, "http", &hints, &result->addrinfo);
     if (ret != 0)
     {
         CSR_ERROR("Get address info failed.\n");
@@ -297,65 +288,62 @@ p_session_t CreateSession(const char* HostName)
         }
         exit(EXIT_FAILURE);
     }
-    // 进行必要的默认初始化
-    InitSession(result);
+    init_session(result);
     return result;
 }
 
-void InitSession(p_session_t pSession)
+void init_session(p_session_t p_session)
 {
-    pSession->request->ReqMethod = method_t::GET;
-    pSession->request->version = { 1, 1 };
-    pSession->request->n_ctnt_len = 0;
-    pSession->request->n_hdr_num = 0;
-    pSession->request->cookies[0] = 0;
-    pSession->request->ctnt_type[0] = 0;
-    pSession->request->token[0] = 0;
-    sprintf_s(pSession->request->path, MAX_NAME_LEN, "/");
-    pSession->request->body = NULL;
-    pSession->response->extra_hdrs = cJSON_CreateArray();
-    pSession->response->n_hdr_num = 0;
-    pSession->response->parsed = false;
-    pSession->response->chunked = false;
-    pSession->cookie_jar = cJSON_CreateArray();
-    pSession->n_cookie_num = 0;
+    p_session->request->request_method = method_t::GET;
+    p_session->request->version = { 1, 1 };
+    p_session->request->n_content_len = 0;
+    p_session->request->n_header_num = 0;
+    p_session->request->cookies[0] = 0;
+    p_session->request->content_type[0] = 0;
+    p_session->request->token[0] = 0;
+    sprintf_s(p_session->request->path, MAX_NAME_LEN, "/");
+    p_session->request->p_body = NULL;
+    p_session->response->a_extra_headers = cJSON_CreateArray();
+    p_session->response->n_header_num = 0;
+    p_session->response->n_content_len = 0;
+    p_session->response->parsed = false;
+    p_session->response->chunked = false;
+    p_session->cookie_jar = cJSON_CreateArray();
+    p_session->n_cookie_num = 0;
 }
 
 
-void DestroySession(p_session_t* session)
+void destroy_session(p_session_t* pp_session)
 {
-    if (*session == NULL)
+    if (*pp_session == NULL)
     {
         return;
     }
-    // free掉request
-    for (int i = 0; i < (*session)->request->n_hdr_num; i++)
+    for (int i = 0; i < (*pp_session)->request->n_header_num; i++)
     {
-        free((*session)->request->extra_hdrs[i]);
+        free((*pp_session)->request->a_extra_headers[i]);
     }
-    if ((*session)->request->body != NULL)
+    if ((*pp_session)->request->p_body != NULL)
     {
-        free((*session)->request->body);
+        free((*pp_session)->request->p_body);
     }
-    free((*session)->request);
-    // free掉response
-    cJSON_Delete((*session)->response->extra_hdrs);
-    free((*session)->response);
-    // free掉所有cookie
-    if ((*session)->cookie_jar != NULL)
+    free((*pp_session)->request);
+    cJSON_Delete((*pp_session)->response->a_extra_headers);
+    free((*pp_session)->response);
+    if ((*pp_session)->cookie_jar != NULL)
     {
-        cJSON_Delete((*session)->cookie_jar);
+        cJSON_Delete((*pp_session)->cookie_jar);
     }
-    freeaddrinfo((*session)->addrinfo);
-    free(*session);
-    *session = NULL;
+    freeaddrinfo((*pp_session)->addrinfo);
+    free(*pp_session);
+    *pp_session = NULL;
 }
 
-char* print_req(p_request_t p_req)
+char* print_request(p_request_t p_request)
 {
     char* result = (char*)malloc(BUF_SIZE);
     int n_req_len = 0;
-    switch (p_req->ReqMethod)
+    switch (p_request->request_method)
     {
     case method_t::GET:
         n_req_len += sprintf_s(result + n_req_len, BUF_SIZE - n_req_len, "GET ");
@@ -368,42 +356,40 @@ char* print_req(p_request_t p_req)
     default:
         break;
     }
-    n_req_len += sprintf_s(result + n_req_len, BUF_SIZE - n_req_len, "%s ", p_req->path);
-    n_req_len += sprintf_s(result + n_req_len, BUF_SIZE - n_req_len, "HTTP/%d.%d\r\n", p_req->version.n_major_ver, p_req->version.n_minor_ver);
-    if (p_req->n_ctnt_len != 0)
+    n_req_len += sprintf_s(result + n_req_len, BUF_SIZE - n_req_len, "%s ", p_request->path);
+    n_req_len += sprintf_s(result + n_req_len, BUF_SIZE - n_req_len, "HTTP/%d.%d\r\n", p_request->version.n_major_ver, p_request->version.n_minor_ver);
+    if (p_request->n_content_len != 0)
     {
-        n_req_len += sprintf_s(result + n_req_len, BUF_SIZE - n_req_len, "Content-Length: %d\r\n", p_req->n_ctnt_len);
+        n_req_len += sprintf_s(result + n_req_len, BUF_SIZE - n_req_len, "Content-Length: %d\r\n", p_request->n_content_len);
     }
-    for (int i = 0; i < p_req->n_hdr_num; i++)
+    for (int i = 0; i < p_request->n_header_num; i++)
     {
-        n_req_len += sprintf_s(result + n_req_len, BUF_SIZE - n_req_len, "%s\r\n", p_req->extra_hdrs[i]);
+        n_req_len += sprintf_s(result + n_req_len, BUF_SIZE - n_req_len, "%s\r\n", p_request->a_extra_headers[i]);
     }
-    if (strlen(p_req->ctnt_type) != 0)
+    if (strlen(p_request->content_type) != 0)
     {
-        n_req_len += sprintf_s(result + n_req_len, BUF_SIZE - n_req_len, "%s\r\n", p_req->ctnt_type);
+        n_req_len += sprintf_s(result + n_req_len, BUF_SIZE - n_req_len, "%s\r\n", p_request->content_type);
     }
-    if (strlen(p_req->token) != 0)
+    if (strlen(p_request->token) != 0)
     {
-        n_req_len += sprintf_s(result + n_req_len, BUF_SIZE - n_req_len, "%s\r\n", p_req->token);
+        n_req_len += sprintf_s(result + n_req_len, BUF_SIZE - n_req_len, "%s\r\n", p_request->token);
     }
-    if (strlen(p_req->cookies) != 0)
+    if (strlen(p_request->cookies) != 0)
     {
-        n_req_len += sprintf_s(result + n_req_len, BUF_SIZE - n_req_len, "%s\r\n", p_req->cookies);
+        n_req_len += sprintf_s(result + n_req_len, BUF_SIZE - n_req_len, "%s\r\n", p_request->cookies);
     }
     n_req_len += sprintf_s(result + n_req_len, BUF_SIZE - n_req_len, "\r\n");
-    if (p_req->body != NULL && p_req->n_ctnt_len != 0)
+    if (p_request->p_body != NULL && p_request->n_content_len != 0)
     {
-        n_req_len += sprintf_s(result + n_req_len, BUF_SIZE - n_req_len, "%s", p_req->body);
+        n_req_len += sprintf_s(result + n_req_len, BUF_SIZE - n_req_len, "%s", p_request->p_body);
     }
     return result;
 }
 
-// 为了方便，只能假设缓冲区足够大，在第一次接收的时候接收到了全部的除了主体的内容
-int parse_hdr(p_response_t p_res, char* res_str, int* n_parsed)
+int parse_header(p_response_t p_response, char* res_str, int* n_parsed)
 {
-    // 这个函数在解析到除了主体之外的全部内容之后成功，然后会返回解析的字节数
-    int cursor = 5; // 响应行前5个字节固定是HTTP/
-    int end = cursor; // 辅助游标
+    int cursor = 5;
+    int end = cursor;
     char KeyBuf[BUF_SIZE];
     char buffer[BUF_SIZE];
     while (res_str[end] != '.')
@@ -411,46 +397,40 @@ int parse_hdr(p_response_t p_res, char* res_str, int* n_parsed)
         end++;
     }
     strncpy_s(buffer, BUF_SIZE, res_str + cursor, end - cursor);
-    p_res->version.n_major_ver = atoi(buffer);
+    p_response->version.n_major_ver = atoi(buffer);
     cursor = ++end;
     while (res_str[end] != ' ')
     {
         end++;
     }
     strncpy_s(buffer, BUF_SIZE, res_str + cursor, end - cursor);
-    p_res->version.n_minor_ver = atoi(buffer);
+    p_response->version.n_minor_ver = atoi(buffer);
     cursor = ++end;
     while (res_str[end] != ' ')
     {
         end++;
     }
     strncpy_s(buffer, BUF_SIZE, res_str + cursor, end - cursor);
-    p_res->n_status_code = atoi(buffer);
+    p_response->n_status_code = atoi(buffer);
     cursor = ++end;
     while (res_str[end] != '\r' && res_str[end] != '\n')
     {
-        // 为了兼容只使用\n的服务器的报文
         end++;
     }
-    // 获取描述
-    strncpy_s(p_res->desc, MAX_NAME_LEN, res_str + cursor, end - cursor);
+    strncpy_s(p_response->description, MAX_NAME_LEN, res_str + cursor, end - cursor);
     if (res_str[end + 1] == '\n')
     {
         ++end;
     }
     cursor = ++end;
-    // 下面是首部的解析，目前只能先考虑服务器是以\r\n结尾的
-    // 现在已经创建了Headers数组，需要往里面添加首部
     while (true)
     {
-        // 得到首部key
         while (res_str[end] != ':' && res_str[end] != '\r' && res_str[end] != '\n')
         {
             end++;
         }
         if (cursor == end)
         {
-            // 结束条件
             if (res_str[end + 1] == '\n')
             {
                 ++end;
@@ -462,45 +442,43 @@ int parse_hdr(p_response_t p_res, char* res_str, int* n_parsed)
         KeyBuf[end - cursor] = 0;
         ++end;
         cursor = ++end;
-        // 得到首部value
         while (res_str[end] != '\r' && res_str[end] != '\n')
         {
             end++;
         }
         strncpy_s(buffer, BUF_SIZE, res_str + cursor, end - cursor);
         buffer[end - cursor] = 0;
-        // 创建首部键值对，添加到首部数组上
         cJSON* Header = cJSON_CreateObject();
         cJSON_AddStringToObject(Header, KeyBuf, buffer);
-        cJSON_AddItemToArray(p_res->extra_hdrs, Header);
-        NormalizeKeyStr(KeyBuf, buffer, BUF_SIZE);
-        if (strcmp(buffer, "transfer-encoding") == 0)
-        {
-            NormalizeKeyStr(cJSON_GetObjectItem(Header, KeyBuf)->valuestring, buffer, BUF_SIZE);
+        cJSON_AddItemToArray(p_response->a_extra_headers, Header);
+        norm_key_str(KeyBuf, buffer, BUF_SIZE);
+        if (strcmp(buffer, "transfer-encoding") == 0) {
+            norm_key_str(cJSON_GetObjectItem(Header, KeyBuf)->valuestring, buffer, BUF_SIZE);
             if (strcmp(buffer, "chunked") == 0)
             {
-                p_res->chunked = true;
+                p_response->chunked = true;
             }
+        } else if (strcmp(buffer, "content-length") == 0) {
+            norm_key_str(cJSON_GetObjectItem(Header, KeyBuf)->valuestring, buffer, BUF_SIZE);
+            p_response->n_content_len = atoi(buffer);
         }
         if (res_str[end + 1] == '\n')
         {
             ++end;
         }
         cursor = ++end;
-        p_res->n_hdr_num++;
+        p_response->n_header_num++;
     }
-    // 除主体内容解析完毕
     *n_parsed = cursor;
-    CSR_DEBUG("Status code: %d, Description: %s\n", p_res->n_status_code, p_res->desc);
+    CSR_DEBUG("Status code: %d, Description: %s, Content-Length: %d\n", p_response->n_status_code, p_response->description, p_response->n_content_len);
     return 0;
 }
 
-int NormalizeKeyStr(char* RawStr, char* NormalizedStr, int iBufSize)
+int norm_key_str(char* RawStr, char* NormalizedStr, int iBufSize)
 {
     int length = strlen(RawStr);
     if (iBufSize <= length)
     {
-        // 缓冲区过小
         CSR_ERROR("NormalizeKeyStr: Buffer is too small!\n");
         return -1;
     }
@@ -520,7 +498,7 @@ int NormalizeKeyStr(char* RawStr, char* NormalizedStr, int iBufSize)
     return 0;
 }
 
-cJSON* ParseCookieString(char* CookieString)
+cJSON* parse_cookie_str(char* CookieString)
 {
     cJSON* CookieResult = cJSON_CreateObject();
     char ValBuf[BUF_SIZE];
@@ -531,23 +509,20 @@ cJSON* ParseCookieString(char* CookieString)
     {
         end++;
     }
-    strncpy_s(KeyBuf, BUF_SIZE, CookieString + cursor, end - cursor); // strncpy_s会自动添加\0，它要求缓冲区的大小严格比被拷贝的字符数多
-    // 拿到了cookie的key
+    strncpy_s(KeyBuf, BUF_SIZE, CookieString + cursor, end - cursor);
     cJSON_AddStringToObject(CookieResult, "Key", KeyBuf);
-    cursor = ++end; // 跳过等号
+    cursor = ++end;
     while (end < length && CookieString[end] != ';')
     {
         end++;
     }
     strncpy_s(ValBuf, BUF_SIZE, CookieString + cursor, end - cursor);
-    // 拿到了cookie的value
     cJSON_AddStringToObject(CookieResult, "Value", ValBuf);
     strcat_s(KeyBuf, BUF_SIZE - strlen(KeyBuf), "=");
     strcat_s(KeyBuf, BUF_SIZE - strlen(KeyBuf), ValBuf);
     cJSON_AddStringToObject(CookieResult, "Raw", KeyBuf);
-    // 下面开始拷贝cookie的一些属性
     ++end;
-    cursor = ++end; // 跳过空格和;
+    cursor = ++end;
     while (end < length)
     {
         while (end < length && CookieString[end] != '=')
@@ -555,64 +530,58 @@ cJSON* ParseCookieString(char* CookieString)
             end++;
         }
         strncpy_s(KeyBuf, BUF_SIZE, CookieString + cursor, end - cursor);
-        // 拿到了cookie属性的key
-        cursor = ++end; // 跳过等号
+        cursor = ++end;
         while (end < length && CookieString[end] != ';')
         {
             end++;
         }
         strncpy_s(ValBuf, BUF_SIZE, CookieString + cursor, end - cursor);
-        // 拿到了cookie属性的value
         cJSON_AddStringToObject(CookieResult, KeyBuf, ValBuf);
         ++end;
-        cursor = ++end; // 跳过空格和;
+        cursor = ++end;
     }
     return CookieResult;
 }
 
-void GetCookies(p_session_t session)
+void get_cookies(p_session_t session)
 {
     char KeyBuf[BUF_SIZE];
-    // 解析首部，填充特殊首部信息，生成Cookie数组
     cJSON* ArrayItem;
-    for (int i = 0; i < session->response->n_hdr_num; i++)
+    for (int i = 0; i < session->response->n_header_num; i++)
     {
-        ArrayItem = cJSON_GetArrayItem(session->response->extra_hdrs, i);
-        NormalizeKeyStr(ArrayItem->child->string, KeyBuf, BUF_SIZE);
+        ArrayItem = cJSON_GetArrayItem(session->response->a_extra_headers, i);
+        norm_key_str(ArrayItem->child->string, KeyBuf, BUF_SIZE);
         if (strcmp(KeyBuf, "set-cookie") == 0 || strcmp(KeyBuf, "set-cookie2") == 0)
         {
-            // 找到一个cookie
-            cJSON* CookieArrayItem = ParseCookieString(ArrayItem->child->valuestring);
-            int exist = CheckCookie(session->cookie_jar, CookieArrayItem);
+            cJSON* CookieArrayItem = parse_cookie_str(ArrayItem->child->valuestring);
+            int exist = check_cookie(session->cookie_jar, CookieArrayItem);
             if (exist == -1)
             {
-                // 不存在这个cookie
                 cJSON_AddItemToArray(session->cookie_jar, CookieArrayItem);
                 session->n_cookie_num++;
             }
             else
             {
-                // 存在这个cookie，更新这个cookie
                 cJSON_DeleteItemFromArray(session->cookie_jar, exist);
                 cJSON_AddItemToArray(session->cookie_jar, CookieArrayItem);
             }
-            cJSON_DeleteItemFromArray(session->response->extra_hdrs, i--);
-            session->response->n_hdr_num--;
+            cJSON_DeleteItemFromArray(session->response->a_extra_headers, i--);
+            session->response->n_header_num--;
         }
     }
 }
 
-int CheckCookie(cJSON* CookieJar, cJSON* cookie)
+int check_cookie(cJSON* CookieJar, cJSON* cookie)
 {
     char buffer1[BUF_SIZE], buffer2[BUF_SIZE];
-    NormalizeKeyStr(cJSON_GetObjectItem(cookie, "Key")->valuestring, buffer1, BUF_SIZE);
+    norm_key_str(cJSON_GetObjectItem(cookie, "Key")->valuestring, buffer1, BUF_SIZE);
     int CookieNum = cJSON_GetArraySize(CookieJar);
     int index = -1;
     cJSON* item;
     for (int i = 0; i < CookieNum; i++)
     {
         item = cJSON_GetArrayItem(CookieJar, i);
-        NormalizeKeyStr(cJSON_GetObjectItem(item, "Key")->valuestring, buffer2, BUF_SIZE);
+        norm_key_str(cJSON_GetObjectItem(item, "Key")->valuestring, buffer2, BUF_SIZE);
         if (strcmp(buffer1, buffer2) == 0)
         {
             index = i;
@@ -622,9 +591,9 @@ int CheckCookie(cJSON* CookieJar, cJSON* cookie)
     return index;
 }
 
-void AddHeader(p_request_t request, const char* header)
+void add_header(p_request_t request, const char* header)
 {
-    request->extra_hdrs[request->n_hdr_num] = (char*)malloc(strlen(header) + 1);
-    strcpy_s(request->extra_hdrs[request->n_hdr_num++], strlen(header) + 1, header);	
+    request->a_extra_headers[request->n_header_num] = (char*)malloc(strlen(header) + 1);
+    strcpy_s(request->a_extra_headers[request->n_header_num++], strlen(header) + 1, header);	
 }
 

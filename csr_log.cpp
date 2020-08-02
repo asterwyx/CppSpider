@@ -4,43 +4,41 @@
 #include <iostream>
 
 #include "csr_log.h"
+#include "csr_error.h"
 
-namespace csr_log {
 
-LEVEL g_eAppLev = LEVEL::L_DEBUG;
+csr::level_t csr::ge_app_lev = csr::level_t::L_DEBUG;
 
-static CRITICAL_SECTION g_sCS;
+static CRITICAL_SECTION gs_cs;
 
-int init()
+uint64_t csr_init_log()
 {
-    InitializeCriticalSection(&g_sCS);
-    return 0;
+    InitializeCriticalSection(&gs_cs);
+    return rc::SUCCESS;
 }
 
-void log(LEVEL lev, const char *prompt, const char *msg, ...)
+void csr::log(level_t lev, const char *prompt, const char *msg, ...)
 {
-    if (lev >= g_eAppLev)
+    if (lev >= ge_app_lev)
     {
         std::string str;
         str = str + prompt + " " + msg;
         va_list args;
         va_start(args, msg);
-        EnterCriticalSection(&g_sCS);
+        EnterCriticalSection(&gs_cs);
         vprintf(str.c_str(), args);
-        LeaveCriticalSection(&g_sCS);
+        LeaveCriticalSection(&gs_cs);
         va_end(args);
     }
 }
 
 
-void print(const char *msg, ...)
+void csr::print(const char *msg, ...)
 {
     va_list args;
     va_start(args, msg);
-    EnterCriticalSection(&g_sCS);
+    EnterCriticalSection(&gs_cs);
     vprintf(msg, args);
-    LeaveCriticalSection(&g_sCS);
+    LeaveCriticalSection(&gs_cs);
     va_end(args);
-}
-
 }

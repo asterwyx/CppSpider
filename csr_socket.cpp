@@ -1,27 +1,29 @@
+#include "csr_socket.h"
 #include <cstdlib>
 #include <cstdio>
-#include <cerrno>
 #include <cstring>
 #include <iostream>
 
 #include "csr_log.h"
-#include "csr_socket.h"
+
 using std::cout;
 using std::endl;
 using std::cerr;
+using csr::p_task_t;
+using csr::task_t;
 #pragma comment(lib, "ws2_32.lib")
 
-static PTASK aTasks[MAX_TASK_NUM];
-static WSAEVENT aEvents[MAX_TASK_NUM];
-static int nTask = 0;
-HANDLE g_hEventScheduler;
+static p_task_t a_tasks[MAX_TASK_NUM];
+static WSAEVENT a_events[MAX_TASK_NUM];
+static int n_task = 0;
+HANDLE gh_event_scheduler;
 
 DWORD WINAPI scheduler(LPVOID lpParam)
 {
     while (true)
     {
         /* the fourth arg is 0 means this function is nonblock */
-        int index = WSAWaitForMultipleEvents(nTask, aEvents, FALSE, 0, FALSE);
+        int index = WSAWaitForMultipleEvents(n_task, a_events, FALSE, 0, FALSE);
         if (index == WSA_WAIT_FAILED)
         {
             int error = WSAGetLastError();
@@ -45,14 +47,13 @@ DWORD WINAPI scheduler(LPVOID lpParam)
         else
         {
             int nSktIdx = index - WSA_WAIT_EVENT_0;
-            SOCKET socket = aTasks[nSktIdx]->socket;
+            SOCKET socket = a_tasks[nSktIdx]->socket;
             WSANETWORKEVENTS event;
             /* get actual network events and reset the WSAEvent */
-            int ret = WSAEnumNetworkEvents(socket, aEvents[nSktIdx], &event);
+            int ret = WSAEnumNetworkEvents(socket, a_events[nSktIdx], &event);
             if (ret == SOCKET_ERROR)
             {
                 // error
-                // CSR_ERROR("Socket error!\n");
                 continue;
             }
             if (event.lNetworkEvents & FD_ACCEPT)
@@ -64,7 +65,7 @@ DWORD WINAPI scheduler(LPVOID lpParam)
                 if (event.iErrorCode[FD_READ_BIT] == 0)
                 {
                     CSR_DEBUG("Socket %llu receive some bytes.\n", socket);
-                    aTasks[nSktIdx]->fRecvHandler(socket, aTasks[nSktIdx]->pArgs);
+                    a_tasks[nSktIdx]->f_recv_handler(socket, a_tasks[nSktIdx]->p_args);
                 }
             }
             else if (event.lNetworkEvents & FD_CLOSE)
@@ -73,20 +74,20 @@ DWORD WINAPI scheduler(LPVOID lpParam)
                 {
                     closesocket(socket);
                     CSR_DEBUG("Socket %llu closed.\n", socket);
-                    DestroyTask(&aTasks[nSktIdx]);
-                    for (int i = nSktIdx; i < nTask; i++)
+                    csr::destroy_task(&a_tasks[nSktIdx]);
+                    for (int i = nSktIdx; i < n_task; i++)
                     {
-                        aTasks[i] = aTasks[i + 1];
-                        aEvents[i] = aEvents[i + 1];
+                        a_tasks[i] = a_tasks[i + 1];
+                        a_events[i] = a_events[i + 1];
                     }
-                    nTask--;
+                    n_task--;
                 }
             }
             else if (event.lNetworkEvents & FD_WRITE)
             {
                 if (event.iErrorCode[FD_WRITE_BIT] == 0)
                 {
-                    char *pToSent = aTasks[nSktIdx]->aSendBuf;
+                    char *pToSent = a_tasks[nSktIdx]->p_send_buf;
                     int nReqLen = strlen(pToSent);
                     int nSentLen = 0;
                     while (nSentLen < nReqLen)
@@ -110,75 +111,75 @@ DWORD WINAPI scheduler(LPVOID lpParam)
     }
 }
 
-int AddTask(PTASK pTask)
+uint64_t csr_init_socket()
+{
+/* initialize WinSock2 */
+    WSAData wsa_data;
+    WORD skt_ver = MAKEWORD(2, 2);
+    if (WSAStartup(skt_ver, &wsa_data) != 0)
+    {
+        CSR_ERROR("Cannot start WinSock2!\n");
+        return rc::E_WSA_FAIL;
+    }
+    /* initialize events array */
+    memset(a_events, 0, sizeof(WSAEVENT) * MAX_TASK_NUM);
+    return rc::SUCCESS;
+}
+
+int csr::add_task(p_task_t p_task)
 {
     /* check full */
-    if (nTask >= MAX_TASK_NUM)
+    if (n_task >= MAX_TASK_NUM)
     {
         CSR_ERROR("Task queue is full!\n");
         return rc::E_NOMEM;
     }
-    aTasks[nTask] = pTask;
-    pTask->bStarted = true;
-    if (aEvents[nTask] == nullptr) {
-        aEvents[nTask] = WSACreateEvent();
+    a_tasks[n_task] = p_task;
+    p_task->b_started = true;
+    if (a_events[n_task] == nullptr) {
+        a_events[n_task] = WSACreateEvent();
     }
-    int rc = WSAConnect(pTask->socket, pTask->pAddrInfo->ai_addr, sizeof(*pTask->pAddrInfo->ai_addr), nullptr, nullptr, nullptr, nullptr);
+    int rc = connect(p_task->socket, p_task->p_addrinfo->ai_addr, sizeof(*p_task->p_addrinfo->ai_addr));
     if (rc == 0) {
-        CSR_DEBUG("Socket %llu connect successfully.\n", pTask->socket);
+        CSR_DEBUG("Socket %llu connect successfully.\n", p_task->socket);
     } else {
-        CSR_ERROR("Socket %llu connection failed!\n", pTask->socket);
+        CSR_ERROR("Socket %llu connection failed!\n", p_task->socket);
         return rc::E_CONN_FAIL;
     }
-    WSAEventSelect(pTask->socket, aEvents[nTask], FD_READ | FD_WRITE | FD_CLOSE);
-    pTask->bStarted = true;
-    nTask++;
+    WSAEventSelect(p_task->socket, a_events[n_task], FD_READ | FD_WRITE | FD_CLOSE);
+    p_task->b_started = true;
+    n_task++;
     return rc::SUCCESS;
 }
 
-
-void InitScheduler()
-{
-    /* initialize WinSock2 */
-    WSAData WsaData;
-    WORD SockVersion = MAKEWORD(2, 2);
-    if (WSAStartup(SockVersion, &WsaData) != 0)
-    {
-        CSR_ERROR("Cannot start WinSock2!\n");
-        exit(EXIT_FAILURE);
-    }
-    /* initialize events array */
-    memset(aEvents, 0, sizeof(WSAEVENT) * MAX_TASK_NUM);
-}
-
-void StartScheduler()
+void csr::start_scheduler()
 {
     /* start scheduler thread */
-    g_hEventScheduler = CreateThread(nullptr, 0, scheduler, nullptr, 0, nullptr);
+    ::gh_event_scheduler = CreateThread(nullptr, 0, scheduler, nullptr, 0, nullptr);
 }
 
-PTASK CreateTask(PVOID pArgs, size_t nBufSize)
+p_task_t csr::create_task(void *p_args, size_t n_buf_size)
 {
-    auto result = (PTASK)malloc(sizeof(TASK) + nBufSize);
-    result->socket = WSASocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, nullptr, 0, 0);
-    result->pArgs = pArgs;
-    result->pAddrInfo = nullptr;
-    result->bArgsAttached = false;
-    result->bStarted = false;
-    result->bFinished = false;
-    result->fRecvHandler = nullptr;
+    auto result = (p_task_t)malloc(sizeof(task_t) + n_buf_size);
+    result->socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    result->p_args = p_args;
+    result->p_addrinfo = nullptr;
+    result->b_args_attached = false;
+    result->b_started = false;
+    result->b_finished = false;
+    result->f_recv_handler = nullptr;
     return result;
 }
 
-void DestroyTask(PTASK* pPTask)
+void csr::destroy_task(p_task_t* pPTask)
 {
     if (pPTask == NULL || (*pPTask) == NULL)
     {
         return;
     }
-    if ((*pPTask)->bArgsAttached)
+    if ((*pPTask)->b_args_attached)
     {
-        free((*pPTask)->pArgs);
+        free((*pPTask)->p_args);
     }
     free(*pPTask);
     *pPTask = NULL;
