@@ -103,16 +103,18 @@ int recv_response(SOCKET skt_conn, p_response_t p_res_got)
     } while (len < 0);
 
     if (len != 0) {
+        /* First parse headers */
         p_res_got->parsed = true;
         parse_header(p_res_got, tmp_buf, &n_hdr_len);
         len -= n_hdr_len;
         memcpy(p_recv_buf, tmp_buf + n_hdr_len, len);
+        p_recv_buf += len;
+        p_res_got->p_body_buf->n_dlength += len;
         do {
+            len = recv(skt_conn, p_recv_buf, p_res_got->p_body_buf->n_dsize - p_res_got->p_body_buf->n_dlength, 0);
             if (len == SOCKET_ERROR) {
                 auto error = WSAGetLastError();
                 if (error == WSAEWOULDBLOCK) {
-                    // Actually, here we need to rewait.
-                    // TODO
                     continue;
                 } else {
                     CSR_ERROR("Receive error, error code: %d\n", error);
@@ -122,7 +124,6 @@ int recv_response(SOCKET skt_conn, p_response_t p_res_got)
             } else {
                 p_recv_buf += len;
                 p_res_got->p_body_buf->n_dlength += len;
-                len = recv(skt_conn, p_recv_buf, p_res_got->p_body_buf->n_dsize - p_res_got->p_body_buf->n_dlength, 0);
             }
         } while(true);
 
