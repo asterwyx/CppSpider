@@ -28,6 +28,8 @@ typedef struct task {
 
 int add_task(p_task_t p_task);
 void start_scheduler();
+void signal_finish();
+bool is_queue_empty();
 p_task_t create_task(void *p_args, size_t n_buf_size);
 void destroy_task(p_task_t* pPTask);
 }

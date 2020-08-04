@@ -16,11 +16,12 @@ using csr::task_t;
 static p_task_t a_tasks[MAX_TASK_NUM];
 static WSAEVENT a_events[MAX_TASK_NUM];
 static int n_task = 0;
+static bool is_finished = false;
 HANDLE gh_event_scheduler;
 
 DWORD WINAPI scheduler(LPVOID lpParam)
 {
-    while (true)
+    while (!is_finished || n_task != 0)
     {
         /* the fourth arg is 0 means this function is nonblock */
         int index = WSAWaitForMultipleEvents(n_task, a_events, FALSE, 0, FALSE);
@@ -56,32 +57,26 @@ DWORD WINAPI scheduler(LPVOID lpParam)
                 // error
                 continue;
             }
-            if (event.lNetworkEvents & FD_ACCEPT)
-            {
-                continue;
-            }
-            else if (event.lNetworkEvents & FD_READ)
+            if (event.lNetworkEvents & FD_READ)
             {
                 if (event.iErrorCode[FD_READ_BIT] == 0)
                 {
-                    CSR_DEBUG("Socket %llu receive some bytes.\n", socket);
                     a_tasks[nSktIdx]->f_recv_handler(socket, a_tasks[nSktIdx]->p_args);
                 }
             }
             else if (event.lNetworkEvents & FD_CLOSE)
             {
-                if (event.iErrorCode[FD_CLOSE_BIT] == 0)
+                // Remember that when peer socket is closed, the FD_CLOSE_BIT of event.iErrorCode is set to nonzero
+                closesocket(socket);
+                CSR_DEBUG("Socket %llu closed.\n", socket);
+                csr::destroy_task(&a_tasks[nSktIdx]);
+                for (int i = nSktIdx; i < (n_task - 1); i++)
                 {
-                    closesocket(socket);
-                    CSR_DEBUG("Socket %llu closed.\n", socket);
-                    csr::destroy_task(&a_tasks[nSktIdx]);
-                    for (int i = nSktIdx; i < n_task; i++)
-                    {
-                        a_tasks[i] = a_tasks[i + 1];
-                        a_events[i] = a_events[i + 1];
-                    }
-                    n_task--;
+                    a_tasks[i] = a_tasks[i + 1];
+                    a_events[i] = a_events[i + 1];
                 }
+                a_tasks[--n_task] = nullptr;
+                a_events[n_task] = nullptr;
             }
             else if (event.lNetworkEvents & FD_WRITE)
             {
@@ -109,6 +104,7 @@ DWORD WINAPI scheduler(LPVOID lpParam)
         }
         
     }
+    return 0;
 }
 
 uint64_t csr_init_socket()
@@ -124,6 +120,16 @@ uint64_t csr_init_socket()
     /* initialize events array */
     memset(a_events, 0, sizeof(WSAEVENT) * MAX_TASK_NUM);
     return rc::SUCCESS;
+}
+
+bool csr::is_queue_empty()
+{
+    return n_task == 0;
+}
+
+void csr::signal_finish()
+{
+    is_finished = true;
 }
 
 int csr::add_task(p_task_t p_task)
@@ -171,16 +177,16 @@ p_task_t csr::create_task(void *p_args, size_t n_buf_size)
     return result;
 }
 
-void csr::destroy_task(p_task_t* pPTask)
+void csr::destroy_task(p_task_t* pp_task)
 {
-    if (pPTask == NULL || (*pPTask) == NULL)
+    if (pp_task == NULL || (*pp_task) == NULL)
     {
         return;
     }
-    if ((*pPTask)->b_args_attached)
+    if ((*pp_task)->b_args_attached)
     {
-        free((*pPTask)->p_args);
+        free((*pp_task)->p_args);
     }
-    free(*pPTask);
-    *pPTask = NULL;
+    free(*pp_task);
+    *pp_task = NULL;
 }

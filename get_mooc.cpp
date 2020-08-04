@@ -31,6 +31,10 @@ int main()
         add_header(session->request, headers[i]);
     }
     int status = http_request(session);
+    while (!csr::is_queue_empty())
+    {
+        Sleep(5);
+    }
     for (int i = 0; i < 5; i++)
     {
         char NewBody[MAX_NAME_LEN];
@@ -40,63 +44,63 @@ int main()
         next_request(session, "/web/j/courseBean.getCourseListBySchoolId.rpc", method_t::POST, NewBody, NewFileName);
         http_request(session);
     }
+    csr::signal_finish();
     WaitForSingleObject(gh_event_scheduler, INFINITE);
-    dispose();
-    char FileName[MAX_NAME_LEN];
-    char* BigBuffer = (char*)malloc(BIG_BUF_SIZE);
-    if (BigBuffer == NULL)
-    {
-        fprintf(stderr, "Can't get a big buffer");
-    }
-    cJSON* DataGot;
-    DataGot = cJSON_CreateObject();
-    cJSON* DataArray = cJSON_CreateArray();
-    cJSON_AddItemToObject(DataGot, "data", DataArray);
-    cJSON* source;
-    cJSON* SourceArray;
-    cJSON* ArrayItem;
-    cJSON* DataPiece;
-    char PiecePath[MAX_NAME_LEN];
-    char filter[FILTER_NUM][MAX_NAME_LEN] = {
-        "id",
-        "name",
-        "startTime",
-        "schoolName",
-        "enrollCount"
-    };
-    for (int i = 0; i < 5; i++)
-    {
-        sprintf_s(FileName, MAX_NAME_LEN, "%sPKU%d.json", DATA_ROOT, i + 1);
-        FILE* fp = fopen(FileName, "r");
-        fgets(BigBuffer, BIG_BUF_SIZE, fp);
-        source = cJSON_Parse(BigBuffer);
-        SourceArray = cJSON_GetObjectItem(cJSON_GetObjectItem(source, "result"), "list");
-        int ArraySize = cJSON_GetArraySize(SourceArray);
-        for (int i = 0; i < ArraySize; i++)
-        {
-            ArrayItem = cJSON_GetArrayItem(SourceArray, i);
-            DataPiece = cJSON_CreateObject();
-            for (int i = 0; i < FILTER_NUM; i++)
-            {
-                cJSON_AddItemToObject(DataPiece, filter[i], cJSON_DetachItemFromObject(ArrayItem, filter[i]));
-            }
-            int id = cJSON_GetObjectItem(DataPiece, "id")->valueint;
-            sprintf_s(PiecePath, MAX_NAME_LEN, "/course/PKU-%d", id);
-            sprintf_s(FileName, MAX_NAME_LEN, "PKU-%d.html", id);
-            next_request(session, PiecePath, method_t::GET, NULL, FileName);
-            http_request(session);
-            cJSON_AddItemToArray(DataArray, DataPiece);
-        }
-        cJSON_Delete(source);
-        fclose(fp);
-    }
-    print_cJSON(DataGot, true);
-    char* String = cJSON_PrintUnformatted(DataGot);
-    sprintf_s(FileName, MAX_NAME_LEN, "%sdata.json", DATA_ROOT);
-    FILE* fp = fopen(FileName, "w");
-    fputs(String, fp);
-    free(String);
-    fclose(fp);
+    // char FileName[MAX_NAME_LEN];
+    // char* BigBuffer = (char*)malloc(BIG_BUF_SIZE);
+    // if (BigBuffer == NULL)
+    // {
+    //     fprintf(stderr, "Can't get a big buffer");
+    // }
+    // cJSON* DataGot;
+    // DataGot = cJSON_CreateObject();
+    // cJSON* DataArray = cJSON_CreateArray();
+    // cJSON_AddItemToObject(DataGot, "data", DataArray);
+    // cJSON* source;
+    // cJSON* SourceArray;
+    // cJSON* ArrayItem;
+    // cJSON* DataPiece;
+    // char PiecePath[MAX_NAME_LEN];
+    // char filter[FILTER_NUM][MAX_NAME_LEN] = {
+    //     "id",
+    //     "name",
+    //     "startTime",
+    //     "schoolName",
+    //     "enrollCount"
+    // };
+    // for (int i = 0; i < 5; i++)
+    // {
+    //     sprintf_s(FileName, MAX_NAME_LEN, "%sPKU%d.json", DATA_ROOT, i + 1);
+    //     FILE* fp = fopen(FileName, "r");
+    //     fgets(BigBuffer, BIG_BUF_SIZE, fp);
+    //     source = cJSON_Parse(BigBuffer);
+    //     SourceArray = cJSON_GetObjectItem(cJSON_GetObjectItem(source, "result"), "list");
+    //     int ArraySize = cJSON_GetArraySize(SourceArray);
+    //     for (int i = 0; i < ArraySize; i++)
+    //     {
+    //         ArrayItem = cJSON_GetArrayItem(SourceArray, i);
+    //         DataPiece = cJSON_CreateObject();
+    //         for (int i = 0; i < FILTER_NUM; i++)
+    //         {
+    //             cJSON_AddItemToObject(DataPiece, filter[i], cJSON_DetachItemFromObject(ArrayItem, filter[i]));
+    //         }
+    //         int id = cJSON_GetObjectItem(DataPiece, "id")->valueint;
+    //         sprintf_s(PiecePath, MAX_NAME_LEN, "/course/PKU-%d", id);
+    //         sprintf_s(FileName, MAX_NAME_LEN, "PKU-%d.html", id);
+    //         next_request(session, PiecePath, method_t::GET, NULL, FileName);
+    //         http_request(session);
+    //         cJSON_AddItemToArray(DataArray, DataPiece);
+    //     }
+    //     cJSON_Delete(source);
+    //     fclose(fp);
+    // }
+    // print_cJSON(DataGot, true);
+    // char* String = cJSON_PrintUnformatted(DataGot);
+    // sprintf_s(FileName, MAX_NAME_LEN, "%sdata.json", DATA_ROOT);
+    // FILE* fp = fopen(FileName, "w");
+    // fputs(String, fp);
+    // free(String);
+    // fclose(fp);
     destroy_session(&session);
     return 0;
 }

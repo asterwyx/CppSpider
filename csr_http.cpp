@@ -9,7 +9,6 @@
 #include "csr_socket.h"
 #include "csr_thread.h"
 #pragma comment(lib, "ws2_32.lib")
-#define CHECK_TRUNC(r1, r2) ((r1 == '\r' && r2 == '\n') ? true : false)
 
 extern csr::p_mempool_t g_csr_mp;
 
@@ -28,26 +27,34 @@ uint64_t csr_init_http()
 int link_chunked(csr::p_mbuf_t *p_mbuf)
 {
     csr::p_mbuf_t new_mbuf = csr::alloc_mbuf(g_csr_mp);
-    byte *buffer = (*p_mbuf)->data;
-    char r1, r2;
-    uint32_t cursor = 0;
-    r2 = buffer[cursor++];
-    bool truncated = true;
-    while (cursor != (*p_mbuf)->n_dlength)
+    auto buffer = (char *)(*p_mbuf)->data;
+    char len_buf[MAX_NAME_LEN];
+    uint32_t cursor = 0, end = cursor;
+    while (cursor < (*p_mbuf)->n_dlength)
     {
-        r1 = r2;
-        r2 = buffer[cursor++];
-        if (CHECK_TRUNC(r1, r2))
+        while (buffer[end] != '\r' && buffer[end] != '\n')
         {
-            truncated = !truncated;
-            r2 = buffer[cursor++];
-            r1 = buffer[cursor++];
-            r2 = buffer[cursor++];
+            end++;
         }
-        if (!truncated)
+        strncpy_s(len_buf, MAX_NAME_LEN, buffer + cursor, end - cursor);
+        while (buffer[end] == '\r' || buffer[end] == '\n')
         {
-            new_mbuf->data[new_mbuf->n_dlength++] = r1;
+            end++;
         }
+        cursor = end;
+        auto len = strtol(len_buf, nullptr, 16);
+        memcpy(new_mbuf->data + new_mbuf->n_dlength, buffer + cursor, len);
+        new_mbuf->n_dlength += len;
+        if (len == 0)
+        {
+            break;
+        }
+        end += len;
+        while (buffer[end] == '\r' || buffer[end] == '\n')
+        {
+            end++;
+        }
+        cursor = end;
     }
     csr::free_mbuf(*p_mbuf);
     *p_mbuf = new_mbuf;
@@ -66,7 +73,7 @@ thrd_ret_t API write_to_file(void *lp_res)
     name += res->body_filename;
     file_t *fp;
     fopen_s(&fp, name.c_str(), "w");
-    fwrite(res->p_body_buf->data, 1, res->n_content_len, fp);
+    fwrite(res->p_body_buf->data, 1, res->p_body_buf->n_dlength, fp);
     fclose(fp);
     return 0;
 }
@@ -133,7 +140,7 @@ int recv_response(SOCKET skt_conn, p_response_t p_res_got)
         CSR_ERROR("Receive failed.\n");
         return -1;
     } else {
-        CSR_DEBUG("Socket %llu received %d bytes.", skt_conn, p_res_got->p_body_buf->n_dlength);
+        CSR_DEBUG("Socket %llu received %d bytes.\n", skt_conn, p_res_got->p_body_buf->n_dlength);
     }
     CreateThread(nullptr, 0, write_to_file, p_res_got, 0, nullptr);
     return 0;
@@ -147,7 +154,7 @@ void recv_handler(SOCKET socket, void *p_session)
         CSR_ERROR("Receive response failed.\n");
     }
     get_cookies(session);
-    closesocket(socket);
+    // closesocket(socket);
 }
 
 
