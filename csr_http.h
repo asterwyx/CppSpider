@@ -31,7 +31,7 @@ typedef enum method {
     DEL
 } method_t;
 
-typedef struct response {
+typedef struct response_hdr {
     http_ver_t version;
     int n_status_code;
     char description[MAX_NAME_LEN];
@@ -43,9 +43,9 @@ typedef struct response {
     bool parsed = false;
     bool chunked = false;
     char body_filename[MAX_NAME_LEN];
-} response_t, *p_response_t;
+} response_hdr_t, *p_response_hdr_t;
 
-typedef struct request {
+typedef struct request_hdr {
     method_t request_method = method_t::GET;
     char hostname[MAX_NAME_LEN];
     char content_type[MAX_NAME_LEN];
@@ -57,28 +57,38 @@ typedef struct request {
     char* a_extra_headers[MAX_HEADER_NUM];
     int n_header_num = 0;
     char* p_body = nullptr;
+} request_hdr_t, *p_request_hdr_t;
+
+typedef struct request {
+    p_request_hdr_t req_hdr;
+    p_response_hdr_t res_hdr;
+    struct request *next;
 } request_t, *p_request_t;
 
 typedef struct session {
+    char hostname[MAX_NAME_LEN];
     PADDRINFOA addrinfo;
-    p_request_t request;
-    p_response_t response;
+    p_request_t head = nullptr;
+    p_request_t tail = nullptr;
+    int n_req_num = 0;
     int n_cookie_num = 0;
     cJSON* cookie_jar = cJSON_CreateArray();
 } session_t, * p_session_t;
 
 uint64_t csr_init_http();
 int http_request(p_session_t p_session);
-char* print_request(p_request_t p_request);
-int parse_header(p_response_t p_response, char* res_str, int* n_parsed);
+char* print_request(p_request_hdr_t p_request);
+int parse_header(p_response_hdr_t p_response, char* res_str, int* n_parsed);
 void dispose();
 int norm_key_str(char* raw_str, char* normalized_str, int n_buf_size);
 cJSON* parse_cookie_str(char* cookie_str);
 int next_request(p_session_t p_session, const char* new_path, method_t new_method, const char* new_body, const char* new_body_filename);
 p_session_t create_session(const char *hostname);
+p_request_t create_request();
 void init_session(p_session_t p_session);
-void destroy_session(p_session_t* pp_session);
+void destroy_session(p_session_t *pp_session);
+void destroy_request(p_request_t *pp_request);
 void get_cookies(p_session_t p_session);
 int check_cookie(cJSON* p_cookie_jar, cJSON* p_cookie);
-void add_header(p_request_t p_request, const char* header);
+void add_header(p_request_hdr_t p_request, const char* header);
 void recv_handler(SOCKET socket, void *p_session);

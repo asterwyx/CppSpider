@@ -1,9 +1,11 @@
 # Project binaries
 build/
 DataRoot/
+out/
 
 # Clion
 .idea/
 cmake-build-debug/
+
 # VScode
 .vscode/
