@@ -25,8 +25,6 @@ set(
     csr_log.cpp
 )
 
-
-
 add_executable(spider get_mooc.cpp ${MAIN_SOURCE})
 add_executable(downloader dlder.cpp ${MAIN_SOURCE})
 add_executable(main_test ${TEST_SOURCE})

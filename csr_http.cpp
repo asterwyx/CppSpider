@@ -181,7 +181,7 @@ int next_request(p_session_t session, const char *NewPath, method_t NewMethod, c
     session->request->content_type[0] = 0;
     session->request->token[0] = 0;
     session->request->cookies[0] = 0;
-    cJSON* KeyCookie = NULL;
+    cJSON* KeyCookie = nullptr;
     for (int i = 0; i < session->n_cookie_num; i++)
     {
         KeyCookie = cJSON_GetArrayItem(session->cookie_jar, i);
@@ -207,9 +207,9 @@ int next_request(p_session_t session, const char *NewPath, method_t NewMethod, c
     {
         strcpy_s(session->request->path, MAX_NAME_LEN, NewPath);
     }
-    if (NewBody != NULL)
+    if (NewBody != nullptr)
     {
-        if (session->request->p_body == NULL)
+        if (session->request->p_body == nullptr)
         {
             session->request->p_body = (char*)malloc(BUF_SIZE);
         }
@@ -237,19 +237,19 @@ int next_request(p_session_t session, const char *NewPath, method_t NewMethod, c
 p_session_t create_session(const char* hostname)
 {
     p_session_t result = (p_session_t)malloc(sizeof(session_t));
-    if (result == NULL)
+    if (result == nullptr)
     {
         CSR_ERROR("Out of memory!\n");
         exit(EXIT_FAILURE);
     }
     result->request = (p_request_t)malloc(sizeof(request_t));
-    if (result->request == NULL)
+    if (result->request == nullptr)
     {
         CSR_ERROR("Out of memory!\n");
         exit(EXIT_FAILURE);
     }
     result->response = (p_response_t)malloc(sizeof(response_t));
-    if (result->response == NULL)
+    if (result->response == nullptr)
     {
         CSR_ERROR("Out of memory!\n");
         exit(EXIT_FAILURE);
@@ -310,7 +310,7 @@ void init_session(p_session_t p_session)
     p_session->request->content_type[0] = 0;
     p_session->request->token[0] = 0;
     sprintf_s(p_session->request->path, MAX_NAME_LEN, "/");
-    p_session->request->p_body = NULL;
+    p_session->request->p_body = nullptr;
     p_session->response->a_extra_headers = cJSON_CreateArray();
     p_session->response->n_header_num = 0;
     p_session->response->n_content_len = 0;
@@ -323,7 +323,7 @@ void init_session(p_session_t p_session)
 
 void destroy_session(p_session_t* pp_session)
 {
-    if (*pp_session == NULL)
+    if (*pp_session == nullptr)
     {
         return;
     }
@@ -331,20 +331,20 @@ void destroy_session(p_session_t* pp_session)
     {
         free((*pp_session)->request->a_extra_headers[i]);
     }
-    if ((*pp_session)->request->p_body != NULL)
+    if ((*pp_session)->request->p_body != nullptr)
     {
         free((*pp_session)->request->p_body);
     }
     free((*pp_session)->request);
     cJSON_Delete((*pp_session)->response->a_extra_headers);
     free((*pp_session)->response);
-    if ((*pp_session)->cookie_jar != NULL)
+    if ((*pp_session)->cookie_jar != nullptr)
     {
         cJSON_Delete((*pp_session)->cookie_jar);
     }
     freeaddrinfo((*pp_session)->addrinfo);
     free(*pp_session);
-    *pp_session = NULL;
+    *pp_session = nullptr;
 }
 
 char* print_request(p_request_t p_request)
@@ -387,7 +387,7 @@ char* print_request(p_request_t p_request)
         n_req_len += sprintf_s(result + n_req_len, BUF_SIZE - n_req_len, "%s\r\n", p_request->cookies);
     }
     n_req_len += sprintf_s(result + n_req_len, BUF_SIZE - n_req_len, "\r\n");
-    if (p_request->p_body != NULL && p_request->n_content_len != 0)
+    if (p_request->p_body != nullptr && p_request->n_content_len != 0)
     {
         n_req_len += sprintf_s(result + n_req_len, BUF_SIZE - n_req_len, "%s", p_request->p_body);
     }
