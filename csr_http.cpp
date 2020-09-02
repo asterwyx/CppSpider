@@ -146,15 +146,14 @@ int recv_response(SOCKET skt_conn, p_response_hdr_t p_res_got)
     return 0;
 }
 
-void recv_handler(SOCKET socket, void *p_session)
+void recv_handler(SOCKET socket, void *p_request)
 {
-    p_session_t session = (p_session_t)p_session;
-    int status = recv_response(socket, session->tail->res_hdr);
+    p_request_t request = (p_request_t)p_request;
+    int status = recv_response(socket, request->res_hdr);
     if (status != 0) {
         CSR_ERROR("Receive response failed.\n");
     }
-    get_cookies(session);
-    // closesocket(socket);
+    get_cookies(request);
 }
 
 
@@ -164,7 +163,7 @@ void dispose()
 
 int http_request(p_session_t p_session)
 {
-    csr::p_task_t pTask = csr::create_task(p_session, BUF_SIZE);
+    csr::p_task_t pTask = csr::create_task(p_session->tail, BUF_SIZE);
     pTask->p_addrinfo = p_session->addrinfo;
     pTask->f_recv_handler = recv_handler;
     char* ReqStr = print_request(p_session->tail->req_hdr);
@@ -175,6 +174,7 @@ int http_request(p_session_t p_session)
 
 
 inline void add_request(p_session_t p_session, p_request_t p_request) {
+    p_request->p_session = p_session;
     if (p_session->n_req_num == 0) {
         p_session->head = p_request;
         p_session->tail = p_session->head;
@@ -185,6 +185,9 @@ inline void add_request(p_session_t p_session, p_request_t p_request) {
     ++p_session->n_req_num;
 }
 
+/**
+ * 用于快速生成下一个请求的工具函数
+ */
 int next_request(p_session_t session, const char *NewPath, method_t NewMethod, const char* NewBody, const char* NewBodyFileName)
 {
     char buffer[BUF_SIZE];
@@ -302,6 +305,31 @@ p_session_t create_session(const char* hostname)
     return result;
 }
 
+inline void init_req_hdr(p_request_hdr_t p_req_hdr) {
+    p_req_hdr->request_method = method_t::GET;
+    p_req_hdr->hostname[0] = 0;
+    p_req_hdr->content_type[0] = 0;
+    p_req_hdr->token[0] = 0;
+    p_req_hdr->path[0] = 0;
+    p_req_hdr->version.n_major_ver = 1;
+    p_req_hdr->version.n_minor_ver = 1;
+    p_req_hdr->n_content_len = 0;
+    p_req_hdr->cookies[0] = 0;
+    p_req_hdr->n_header_num = 0;
+    p_req_hdr->p_body = nullptr;
+}
+
+inline void init_res_hdr(p_response_hdr_t p_res_hdr) {
+    p_res_hdr->description[0] = 0;
+    p_res_hdr->content_type[0] = 0;
+    p_res_hdr->n_content_len = 0;
+    p_res_hdr->a_extra_headers = cJSON_CreateArray();
+    p_res_hdr->n_header_num = 0;
+    p_res_hdr->parsed = false;
+    p_res_hdr->chunked = false;
+    p_res_hdr->body_filename[0] = 0;
+}
+
 p_request_t create_request()
 {
     p_request_t p_request = (p_request_t)malloc(sizeof(request_t));
@@ -311,7 +339,9 @@ p_request_t create_request()
     }
     p_request->next = nullptr;
     p_request->req_hdr = (p_request_hdr_t)malloc(sizeof(request_hdr_t));
+    init_req_hdr(p_request->req_hdr);
     p_request->res_hdr = (p_response_hdr_t)malloc(sizeof(response_hdr_t));
+    init_res_hdr(p_request->res_hdr);
     if (p_request->req_hdr == nullptr || p_request->res_hdr == nullptr) {
         CSR_ERROR("Out of memory!\n");
         exit(EXIT_FAILURE);
@@ -321,8 +351,9 @@ p_request_t create_request()
 
 void init_session(p_session_t p_session)
 {
-    p_session->head = nullptr;
-    p_session->tail = nullptr;
+    p_session->head = create_request();
+    p_session->tail = p_session->head;
+    p_session->tail->p_session = p_session;
     p_session->n_req_num = 0;
     p_session->cookie_jar = cJSON_CreateArray();
     p_session->n_cookie_num = 0;
@@ -574,30 +605,30 @@ cJSON* parse_cookie_str(char* CookieString)
     return CookieResult;
 }
 
-void get_cookies(p_session_t session)
+void get_cookies(p_request_t p_request)
 {
     char KeyBuf[BUF_SIZE];
     cJSON* ArrayItem;
-    for (int i = 0; i < session->tail->res_hdr->n_header_num; i++)
+    for (int i = 0; i < p_request->res_hdr->n_header_num; i++)
     {
-        ArrayItem = cJSON_GetArrayItem(session->tail->res_hdr->a_extra_headers, i);
+        ArrayItem = cJSON_GetArrayItem(p_request->res_hdr->a_extra_headers, i);
         norm_key_str(ArrayItem->child->string, KeyBuf, BUF_SIZE);
         if (strcmp(KeyBuf, "set-cookie") == 0 || strcmp(KeyBuf, "set-cookie2") == 0)
         {
             cJSON* CookieArrayItem = parse_cookie_str(ArrayItem->child->valuestring);
-            int exist = check_cookie(session->cookie_jar, CookieArrayItem);
+            int exist = check_cookie(p_request->p_session->cookie_jar, CookieArrayItem);
             if (exist == -1)
             {
-                cJSON_AddItemToArray(session->cookie_jar, CookieArrayItem);
-                session->n_cookie_num++;
+                cJSON_AddItemToArray(p_request->p_session->cookie_jar, CookieArrayItem);
+                p_request->p_session->n_cookie_num++;
             }
             else
             {
-                cJSON_DeleteItemFromArray(session->cookie_jar, exist);
-                cJSON_AddItemToArray(session->cookie_jar, CookieArrayItem);
+                cJSON_DeleteItemFromArray(p_request->p_session->cookie_jar, exist);
+                cJSON_AddItemToArray(p_request->p_session->cookie_jar, CookieArrayItem);
             }
-            cJSON_DeleteItemFromArray(session->tail->res_hdr->a_extra_headers, i--);
-            session->tail->res_hdr->n_header_num--;
+            cJSON_DeleteItemFromArray(p_request->res_hdr->a_extra_headers, i--);
+            p_request->res_hdr->n_header_num--;
         }
     }
 }

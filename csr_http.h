@@ -59,13 +59,17 @@ typedef struct request_hdr {
     char* p_body = nullptr;
 } request_hdr_t, *p_request_hdr_t;
 
-typedef struct request {
+typedef struct request request_t, *p_request_t;
+typedef struct session session_t, *p_session_t;
+
+struct request {
     p_request_hdr_t req_hdr;
     p_response_hdr_t res_hdr;
+    p_session_t p_session;
     struct request *next;
-} request_t, *p_request_t;
+};
 
-typedef struct session {
+struct session {
     char hostname[MAX_NAME_LEN];
     PADDRINFOA addrinfo;
     p_request_t head = nullptr;
@@ -73,7 +77,7 @@ typedef struct session {
     int n_req_num = 0;
     int n_cookie_num = 0;
     cJSON* cookie_jar = cJSON_CreateArray();
-} session_t, * p_session_t;
+}; 
 
 uint64_t csr_init_http();
 int http_request(p_session_t p_session);
@@ -88,7 +92,7 @@ p_request_t create_request();
 void init_session(p_session_t p_session);
 void destroy_session(p_session_t *pp_session);
 void destroy_request(p_request_t *pp_request);
-void get_cookies(p_session_t p_session);
+void get_cookies(p_request_t p_request);
 int check_cookie(cJSON* p_cookie_jar, cJSON* p_cookie);
 void add_header(p_request_hdr_t p_request, const char* header);
 void recv_handler(SOCKET socket, void *p_session);

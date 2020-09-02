@@ -167,7 +167,7 @@ void csr::start_scheduler()
 p_task_t csr::create_task(void *p_args, size_t n_buf_size)
 {
     auto result = (p_task_t)malloc(sizeof(task_t) + n_buf_size);
-    result->socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    result->socket = socket(AF_INET, SOCK_STREAM, IPPROTO::IPPROTO_TCP);
     result->p_args = p_args;
     result->p_addrinfo = nullptr;
     result->b_args_attached = false;

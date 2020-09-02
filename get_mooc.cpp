@@ -18,8 +18,8 @@ int main()
         return -1;
     } 
     p_session_t session = create_session("www.icourse163.org");
-    strcpy_s(session->request->path, MAX_NAME_LEN, "/university/PKU");
-    strcpy_s(session->response->body_filename, MAX_NAME_LEN, "PKU.html");
+    strcpy_s(session->tail->req_hdr->path, MAX_NAME_LEN, "/university/PKU");
+    strcpy_s(session->tail->res_hdr->body_filename, MAX_NAME_LEN, "PKU.html");
     char headers[][MAX_HEADER_LEN] = {
         "Accept: *",
         "Host: www.icourse163.org",
@@ -28,7 +28,7 @@ int main()
     };
     for (int i = 0; i < 4; i++)
     {
-        add_header(session->request, headers[i]);
+        add_header(session->tail->req_hdr, headers[i]);
     }
     int status = http_request(session);
     while (!csr::is_queue_empty())
