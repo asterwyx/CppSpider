@@ -32,14 +32,14 @@ typedef enum method {
 } method_t;
 
 typedef struct response_hdr {
-    http_ver_t version;
+    http_ver_t version = {1, 1};
     int n_status_code;
     char description[MAX_NAME_LEN];
     char content_type[MAX_NAME_LEN];
-    int n_content_len;
+    int n_content_len = 0;
     cJSON *a_extra_headers = cJSON_CreateArray();
     int n_header_num = 0;
-    csr::p_mbuf_t p_body_buf;
+    csr::p_mbuf_t p_body_buf = nullptr;
     bool parsed = false;
     bool chunked = false;
     char body_filename[MAX_NAME_LEN];

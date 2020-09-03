@@ -78,25 +78,25 @@ thrd_ret_t API write_to_file(void *lp_res)
     return 0;
 }
 
-int send_request(SOCKET SocketConn, char* RequestString)
-{
-    int n_req_len = strlen(RequestString);
-    int SentLen = 0;
-    while (SentLen < n_req_len)
-    {
-        int len = send(SocketConn, RequestString + SentLen, n_req_len - SentLen, 0);
-        if (len >= 0)
-        {
-            SentLen += len;
-        }
-        else
-        {
-            break;
-        }
-    }
-    CSR_INFO("Sent %d bytes.\n", SentLen);
-    return 0;
-}
+// int send_request(SOCKET SocketConn, char* RequestString)
+// {
+//     int n_req_len = strlen(RequestString);
+//     int SentLen = 0;
+//     while (SentLen < n_req_len)
+//     {
+//         int len = send(SocketConn, RequestString + SentLen, n_req_len - SentLen, 0);
+//         if (len >= 0)
+//         {
+//             SentLen += len;
+//         }
+//         else
+//         {
+//             break;
+//         }
+//     }
+//     CSR_INFO("Sent %d bytes.\n", SentLen);
+//     return 0;
+// }
 
 int recv_response(SOCKET skt_conn, p_response_hdr_t p_res_got)
 {
@@ -235,8 +235,6 @@ int next_request(p_session_t session, const char *NewPath, method_t NewMethod, c
     strcpy_s(next_req->res_hdr->body_filename, MAX_NAME_LEN, NewBodyFileName);
     next_req->res_hdr->parsed = false;
     cJSON_Delete(next_req->res_hdr->a_extra_headers);
-    next_req->res_hdr->a_extra_headers = cJSON_CreateArray();
-    next_req->res_hdr->n_header_num = 0;
     cJSON* cookie;
     sprintf_s(next_req->req_hdr->cookies, MAX_HEADER_LEN, "Cookie: "); // 初始化键
     for (int i = 0; i < session->n_cookie_num; i++)
@@ -264,7 +262,7 @@ p_session_t create_session(const char* hostname)
     memset(&hints, 0, sizeof(ADDRINFO));
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
-    hints.ai_protocol = IPPROTO_TCP;
+    hints.ai_protocol = IPPROTO::IPPROTO_TCP;
     hints.ai_flags = AI_PASSIVE;
     int ret = getaddrinfo(hostname, "http", &hints, &result->addrinfo);
     if (ret != 0)
@@ -351,12 +349,10 @@ p_request_t create_request()
 
 void init_session(p_session_t p_session)
 {
-    p_session->head = create_request();
-    p_session->tail = p_session->head;
-    p_session->tail->p_session = p_session;
     p_session->n_req_num = 0;
     p_session->cookie_jar = cJSON_CreateArray();
     p_session->n_cookie_num = 0;
+    add_request(p_session, create_request());
 }
 
 
