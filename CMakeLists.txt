@@ -21,10 +21,12 @@ set(
 set(
     TEST_SOURCE
     main.cpp
-    csr_log.h
-    csr_log.cpp
+    logger.hpp
+    logger.cpp
+    thread.hpp
+    thread.cpp
 )
 
-add_executable(spider get_mooc.cpp ${MAIN_SOURCE})
-add_executable(downloader dlder.cpp ${MAIN_SOURCE})
+# add_executable(spider get_mooc.cpp ${MAIN_SOURCE})
+# add_executable(downloader dlder.cpp ${MAIN_SOURCE})
 add_executable(main_test ${TEST_SOURCE})

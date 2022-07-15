@@ -1,35 +1,60 @@
-#include <iostream>
-#include <Windows.h>
+#include "logger.hpp"
+#include "thread.hpp"
+#include <unistd.h>
 #include <cstdlib>
-
-#include "csr_main.h"
-
 using std::cerr;
 using std::cout;
 using std::endl;
-using csr::print;
 
-DWORD WINAPI TestThread(LPVOID lpParam)
-{
-    int tid = *(int *)lpParam;
-    for (int i = 0; i < 10; i++)
+
+class factory {
+public:
+    
+    static csr::logger* get_instance()
     {
-        // CSR_DEBUG("Hello, thread%d\n", tid);
-        // print("Hello, thread%d\n", tid);
-        printf("Hello, thread%d\n", tid);
-        Sleep(rand() % 10);
+        if (!sys_logger)
+            sys_logger = new csr::logger("factory logger", csr::logger::level::ERROR);
+        return sys_logger;
     }
-    return 0;
-}
+
+    static void *worker(void *lpParam)
+    {
+        auto glogger = get_instance();
+        int tid = *(int *)lpParam;
+        sleep(rand() % 10 + 1);
+        glogger->debug("Hello, thread %d.\n", tid);
+        glogger->error("Hello, thread %d.\n", tid);
+        return lpParam;
+    }
+
+private:
+
+    class deletor
+    {
+    public:
+        deletor();
+        ~deletor()
+        {
+            if (factory::sys_logger != nullptr)
+                delete sys_logger;
+        }
+    };
+    static csr::logger    *sys_logger;
+    static deletor        delr;
+};
+
+csr::logger *factory::sys_logger = nullptr;
 
 int main(int argc, char *argv[])
 {
-    int id[5];
-    HANDLE hThreads[5];
-    csr_init_log();
-    for (int i = 0; i < 5; i++) {
-        id[i] = i + 1;
-        hThreads[i] = CreateThread(nullptr, 0, TestThread, id + i, 0, nullptr);
+    srand(0);
+    int tid[10];
+    for (int i = 0; i < 10; i++) {
+        tid[i] = i;
+        csr::thread slave(factory::worker, &tid[i]);
+        slave.start();
+        slave.join();
     }
-    WaitForMultipleObjects(5, hThreads, TRUE, INFINITE);
+    getchar();
+    return 0;
 }
